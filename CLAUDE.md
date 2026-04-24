@@ -161,8 +161,12 @@ Pinecone setup (one-time): create a serverless index matching `PINECONE_INDEX`, 
 
 ## Self-maintenance
 
-- Decisions → new entry in [docs/DECISIONS.md](docs/DECISIONS.md) (format: Decision / Why / Alternatives rejected / Cost if reversed / Interview note).
-- Surprises discovered by running → [docs/LESSONS.md](docs/LESSONS.md) (format: What surprised me / Context / What to do).
-- Phase completions → tick in [docs/ROADMAP.md § Progress tracker](docs/ROADMAP.md#progress-tracker).
-- Architecture changes → update [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-- Before every commit: `git check-ignore -v .env credentials.json` must print matches for both. Never commit `data/raw|aims|digests/` either.
+These docs exist so the **16:45 show & tell** is a curation job, not a scramble. Keep them current as the day unfolds — the brief's four demo themes (*how it works, why these choices, what to build next with a week, biggest risks*) each have a home below. If the 15 minutes before demo are spent writing rather than rehearsing, we failed this rule.
+
+- **Decisions** → new entry in [docs/DECISIONS.md](docs/DECISIONS.md) (format: Decision / Why / Alternatives rejected / Cost if reversed / Interview note). The *Interview note* field is demo-script material — write it in the voice you'd say it aloud.
+- **Surprises discovered by running** → [docs/LESSONS.md](docs/LESSONS.md) (format: What surprised me / Context / What to do). If a lesson exposes real fragility, also mirror a one-liner into [docs/DEMO_NOTES.md § 6 Biggest risks](docs/DEMO_NOTES.md#6-biggest-risks--whats-fragile-in-the-current-build).
+- **Phase completions** → tick [docs/ROADMAP.md § Progress tracker](docs/ROADMAP.md#progress-tracker) **and** update the corresponding verb row in [docs/DEMO_NOTES.md § 1 How it works](docs/DEMO_NOTES.md#1-how-it-works--the-8-verb-spine) — only claim a verb as live if the phase actually wired it.
+- **Architecture changes** → update [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- **Scope cuts, stubs, degraded paths, 30-min-rule pivots** → append to [docs/DEMO_NOTES.md § 4 What I cut](docs/DEMO_NOTES.md#4-what-i-cut--deliberate-scope-calls) with the named module + 1-line why + what would unstub it. Every cut is also a "what's next with a week" candidate — if it's a feature you'd resurrect, add a named-module, rough-LOC bullet to [§ 5 What's next](docs/DEMO_NOTES.md#5-whats-next-with-a-week--named-modules-named-line-counts). Weak candidates hand-wave here; strong ones name the file and line count.
+- **The 14:30 fork decision** → fill in [docs/DEMO_NOTES.md § 3](docs/DEMO_NOTES.md#3-what-i-chose-to-go-deep-on--the-1430-fork) the moment the alarm goes off. Name the trade-off in the voice you'd say it aloud.
+- **Before every commit**: `git check-ignore -v .env credentials.json` must print matches for both. Never commit `data/raw|aims|digests/` either.
