@@ -68,7 +68,7 @@ Point at `data/evals/SUMMARY.md`:
 1. **Built an eval harness, not just a pipeline** — `scripts/eval_digest.py` + 20-row `evals/golden.jsonl` + LLM-as-judge (relevance/specificity/non-dup, 1–5).
 2. **Eval caught a corpus bug** — SaaS Aim scored 0.00 recall because Congress was stubbed. Promoted `CongressConnector` stub → live via GovTrack. Relevance 2.50 → 3.00.
 3. **The fix exposed a ranking bug** — recall stayed 0.00. Wrote `scripts/diagnose_saas_ranking.py`. Root cause: one hot article held 126 chunks in the top-30 pool — Tier 3 dedup filters `article_id $ne`, so same-URL re-upserts accumulated.
-4. **20-line fix: `collapse_chunks_by_article`** — retrieve wide (1000), collapse to best chunk per article, take top 40. **Recall 0.00 → 0.17, relevance 3.00 → 4.33.**
+4. **20-line fix: `collapse_chunks_by_article`** — group retrieved chunks by `article_id`, keep the best-scored one per article, take top 40 unique articles into rerank. **Recall 0.00 → 0.17, relevance 3.00 → 4.33.**
 5. **Diagnostic discipline:** three hypotheses were wrong. Dropping down a layer saved an hour of tweaking the wrong stage.
 
 > *"That's the whole day in one thread: measurement drove the fixes, and the infra I shipped for Phase 5 (BQ + GCS) turns out to solve the next eval problem too — snapshot-pinned golden labels."*
@@ -81,7 +81,7 @@ Name three, with files and line counts:
 
 - **SEC + Congress full-text ingestion** — `SECConnector.fetch_text` (~60 LOC), `CongressConnector.fetch_text` (~40 LOC). Corpus profiling showed SEC feed median is **253 chars** — no retrieval tweak can rank what was never ingested.
 - **Cross-encoder reranker** — swap gpt-4o-mini for Pinecone Inference `cohere-rerank-3.5`, ~30 LOC in `retrieval.py::rerank_chunks`. Purpose-built, no JSON-shape failure mode, ~85% cost reduction.
-- **Retrieval-time clustering + `source_count` signal** — "N outlets covered this story" is the strongest editorial-importance signal in news; Tier 3 at upsert destroys it. ~90 min across `vector_store.py` + `retrieval.py` + `report.py`.
+- **Retrieval-time clustering + `source_count` signal** — "N outlets covered this story" is the strongest editorial-importance signal in news. Move the semantic near-dup check from upsert → retrieval so the near-duplicates survive as a *popularity count* instead of getting dropped, then boost rerank by `+min(2.0, 0.5*(source_count-1))`. ~90 min across `vector_store.py` + `retrieval.py` + `report.py`.
 
 ---
 
