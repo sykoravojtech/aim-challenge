@@ -59,7 +59,11 @@ from pipeline.vector_store import get_index, query as vector_query, upsert_chunk
 # article_id, keep top RETRIEVE_TOP_K unique articles. Moved saas-ai recall
 # 0.00 → >0 without touching rerank or MMR.
 RETRIEVE_TOP_K = 40
-RETRIEVE_RAW_K = 1000
+# 300 covers the region-filtered corpus comfortably (total index ~811 post-6G
+# cleanup). The collapse needs top 40 articles by score; anything below rank
+# ~200 wasn't winning. 6H: cuts retrieve latency ~3× vs top_k=1000 by shrinking
+# the `include_values=True` payload.
+RETRIEVE_RAW_K = 300
 RERANK_TOP_N = 15
 MMR_TOP_K = 10
 MMR_LAMBDA = 0.7

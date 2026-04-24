@@ -50,7 +50,7 @@ COMPARE_DIR = ROOT / "data" / "compare"
 
 # Mirror main.py constants exactly so capture == live pipeline.
 RETRIEVE_TOP_K = 40
-RETRIEVE_RAW_K = 1000
+RETRIEVE_RAW_K = 300
 RERANK_TOP_N = 15
 MMR_TOP_K = 10
 MMR_LAMBDA = 0.7

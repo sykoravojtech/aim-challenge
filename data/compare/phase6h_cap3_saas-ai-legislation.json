@@ -1,5 +1,5 @@
 {
-  "headline": "SaaS-AI Legislative Update",
+  "headline": "SaaS-AI Legislative Update - April 24, 2026",
   "date_range": "Apr 24, 2026 (single-day run)",
   "sections": [
     {
@@ -7,43 +7,43 @@
       "items": [
         {
           "title": "Surveillance Accountability Act Introduced",
-          "body": "The Surveillance Accountability Act (H.R. 8470) was introduced in Congress on April 23, 2026. This bill is currently in the first stage of the legislative process and will be considered by committee before potentially advancing to the House or Senate.",
+          "body": "The Surveillance Accountability Act (H.R. 8470) was introduced in Congress on April 23, 2026. This bill is currently in the early stages of the legislative process and will be reviewed by committee before potentially moving to the House or Senate for further consideration.",
           "source_urls": [
             "https://www.govtrack.us/congress/bills/119/hr8470"
           ],
           "source_count": 1,
           "item_type": "legislation",
-          "relevance_score": 8
-        }
-      ]
-    },
-    {
-      "title": "Regulatory Insights",
-      "items": [
-        {
-          "title": "OpenAI's Compliance API Enhancements",
-          "body": "OpenAI has introduced a Compliance API that provides visibility into agent configurations, updates, and run histories, which is crucial for organizations concerned about compliance and regulatory adherence.",
-          "source_urls": [
-            "https://venturebeat.com/orchestration/openai-unveils-workspace-agents-a-successor-to-custom-gpts-for-enterprises-that-can-plug-directly-into-slack-salesforce-and-more"
-          ],
-          "source_count": 1,
-          "item_type": "regulatory",
           "relevance_score": 7
         }
       ]
     },
     {
-      "title": "AI Product Developments",
+      "title": "Privacy Legislation Concerns",
       "items": [
         {
-          "title": "Launch of Privacy Filter by OpenAI",
-          "body": "OpenAI has launched the Privacy Filter, an open-source tool designed to sanitize enterprise datasets by removing personal information. This initiative aims to enhance the safety of AI deployments in sensitive environments.",
+          "title": "SECURE Data Act Raises Privacy Issues",
+          "body": "The SECURE Data Act proposes new protections for data privacy but has been criticized for lacking enforcement mechanisms. Critics argue that it could be 'worse than no standard at all' due to its limitations on individual rights and opt-out capabilities.",
           "source_urls": [
-            "https://venturebeat.com/data/openai-launches-privacy-filter-an-open-source-on-device-data-sanitization-model-that-removes-personal-information-from-enterprise-datasets"
+            "https://www.theverge.com/policy/917828/data-privacy-bill-secure-act-house-state-laws"
           ],
           "source_count": 1,
-          "item_type": "product_update",
-          "relevance_score": 9
+          "item_type": "news",
+          "relevance_score": 6
+        }
+      ]
+    },
+    {
+      "title": "AI Regulatory Landscape",
+      "items": [
+        {
+          "title": "OpenAI's New Compliance Tools",
+          "body": "OpenAI has launched a Compliance API that provides visibility into agent configurations and usage patterns, aimed at enhancing compliance for enterprises. This tool is part of a broader effort to ensure safer AI deployments.",
+          "source_urls": [
+            "https://venturebeat.com/orchestration/openai-unveils-workspace-agents-a-successor-to-custom-gpts-for-enterprises-that-can-plug-directly-into-slack-salesforce-and-more"
+          ],
+          "source_count": 1,
+          "item_type": "news",
+          "relevance_score": 8
         }
       ]
     }
@@ -51,8 +51,8 @@
   "_funnel": {
     "label": "phase6h_cap3",
     "aim_id": "saas-ai-legislation",
-    "retrieved_raw": 564,
-    "retrieved": 67,
+    "retrieved_raw": 300,
+    "retrieved": 74,
     "unique_articles": 40,
     "per_article_cap": 2,
     "reranked": 15,
@@ -61,5 +61,5 @@
     "sections": 3,
     "items": 3
   },
-  "_captured_at": "2026-04-24T13:37:11.031307+00:00"
+  "_captured_at": "2026-04-24T13:53:08.243252+00:00"
 }

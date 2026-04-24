@@ -7,7 +7,7 @@
       "items": [
         {
           "title": "Polish-Based GRAI Secures \u20ac7.65M Seed Funding",
-          "body": "Polish-based GRAI has successfully secured \u20ac7.65 million in seed funding to develop its AI-powered music remix platform, showcasing the growing investment interest in CEE tech startups.",
+          "body": "Polish-based startup GRAI has successfully secured \u20ac7.65 million in seed funding to develop its AI-powered music remix platform. This funding marks a significant step in enhancing its technological capabilities and expanding its market reach.",
           "source_urls": [
             "https://therecursive.com/grai-secures-e7-65m-seed-funding-to-build-ai-powered-music-remix-platform/"
           ],
@@ -17,7 +17,7 @@
         },
         {
           "title": "Polish Warsaw Equity Group Leads \u20ac5M Series A",
-          "body": "The Polish Warsaw Equity Group has led a \u20ac5 million Series A funding round in collaboration with Porsche Ventures, highlighting the active investment landscape in the CEE region.",
+          "body": "The Polish Warsaw Equity Group has led a \u20ac5 million Series A investment alongside Porsche Ventures, aiming to foster innovation in the region's electric vehicle charging sector. This investment highlights the growing interest in sustainable technologies within CEE.",
           "source_urls": [
             "https://therecursive.com/warsaw-equity-group-porsche-ventures-charge-investment-ev-charging/"
           ],
@@ -32,7 +32,7 @@
       "items": [
         {
           "title": "Bulgarian Codery Acquires Elfshock",
-          "body": "Bulgarian-founded Codery has announced the acquisition of Elfshock, specializing in robotic process automation and AI-driven solutions, marking a significant step in Codery's expansion.",
+          "body": "Bulgarian-founded Codery has announced the acquisition of Elfshock, a company specializing in robotic process automation and AI-driven solutions for the financial services sector. This acquisition is expected to enhance Codery's service offerings significantly.",
           "source_urls": [
             "https://therecursive.com/cee-startup-tech-weekly-two-polish-startups-raise-fresh-funding/"
           ],
@@ -41,29 +41,29 @@
           "relevance_score": 6
         },
         {
-          "title": "AdScout Welcomes Google Veteran",
-          "body": "AdScout, a Bulgarian startup, has recruited a former Google executive to address the 'trust tax' in advertising, indicating a strategic move to enhance its market position.",
+          "title": "Google Veteran Joins Bulgarian AdScout",
+          "body": "A former Google executive has joined Bulgarian startup AdScout to address the 'trust tax' in digital advertising. This move is part of AdScout's strategy to leverage expertise from Silicon Valley to enhance its product offerings.",
           "source_urls": [
             "https://therecursive.com/google-veteran-joins-bulgarian-adscout-to-tackle-trust-tax/"
           ],
           "source_count": 1,
           "item_type": "news",
-          "relevance_score": 5
+          "relevance_score": 7
         }
       ]
     },
     {
-      "title": "Regional Insights",
+      "title": "Insights on CEE Ecosystem",
       "items": [
         {
-          "title": "CEE's Role in Global AI",
-          "body": "A prominent figure in the CEE tech scene emphasizes the region's strengths in applied engineering, positioning it as a key player in the global AI landscape.",
+          "title": "Slovenia's Approach to Startup Internationalisation",
+          "body": "Slovenia is rethinking its strategy for startup internationalisation, focusing on creating multimedia content for children and AI training apps. This innovative approach aims to scale Slovenian startups into English-speaking markets effectively.",
           "source_urls": [
-            "https://therecursive.com/google-veteran-joins-bulgarian-adscout-to-tackle-trust-tax/"
+            "https://therecursive.com/slovenia-startup-ecosystem-internationalisation-viennaup-2026/"
           ],
           "source_count": 1,
-          "item_type": "quote",
-          "relevance_score": 7
+          "item_type": "news",
+          "relevance_score": 6
         }
       ]
     }
@@ -71,8 +71,8 @@
   "_funnel": {
     "label": "phase6h_cap3",
     "aim_id": "cee-founder-media",
-    "retrieved_raw": 603,
-    "retrieved": 80,
+    "retrieved_raw": 300,
+    "retrieved": 75,
     "unique_articles": 40,
     "per_article_cap": 2,
     "reranked": 15,
@@ -81,5 +81,5 @@
     "sections": 3,
     "items": 5
   },
-  "_captured_at": "2026-04-24T13:35:37.515668+00:00"
+  "_captured_at": "2026-04-24T13:52:35.296415+00:00"
 }
