@@ -1,7 +1,6 @@
 """Chunking — LangChain RecursiveCharacterTextSplitter, title prepended."""
 from __future__ import annotations
 
-import uuid
 from typing import Any
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -24,7 +23,10 @@ def chunk_articles(docs: list[RawDoc]) -> list[dict[str, Any]]:
         for i, part in enumerate(parts):
             chunks.append(
                 {
-                    "chunk_id": uuid.uuid4().hex,
+                    # Deterministic id: Pinecone upserts by id are idempotent,
+                    # so `mode=force` re-runs overwrite instead of duplicating.
+                    # Prior UUIDv4 ids caused 4,122 vectors where 811 was correct.
+                    "chunk_id": f"{doc.article_id}:{i}",
                     "article_id": doc.article_id,
                     "source_url": doc.source_url,
                     "source_feed": doc.source_feed,

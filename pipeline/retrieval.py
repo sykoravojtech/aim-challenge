@@ -9,7 +9,7 @@ import numpy as np
 from openai import OpenAI
 
 from models.schemas import Aim
-from pipeline._util import LLMShapeError, safe_llm_json
+from pipeline._util import LLMShapeError, safe_llm_json, strip_markdown_fences
 from pipeline.embedding import embed_query
 from pipeline.vector_store import query
 
@@ -42,9 +42,13 @@ def retrieve_relevant_chunks(
 
 
 def collapse_chunks_by_article(
-    chunks: list[dict[str, Any]], top_k: int
+    chunks: list[dict[str, Any]],
+    top_k: int,
+    per_article_cap: int = 1,
+    sort_key: str = "score",
 ) -> list[dict[str, Any]]:
-    """Collapse chunks to best-scored chunk per article_id.
+    """Collapse chunks to up to `per_article_cap` best-scored chunks per article_id,
+    returning the top `top_k` *articles* worth (so max output = top_k * per_article_cap).
 
     Why: Tier 3 semantic dedup filters `article_id $ne`, so same-URL re-upserts
     across `force` runs accumulate in Pinecone — one article can hold 100+
@@ -53,17 +57,76 @@ def collapse_chunks_by_article(
     on-Aim sources (regulatory / legislation) get starved at rerank time.
     Surfaced by 6G diagnostic: saas-ai-legislation recall 0/6 traced to
     `OpenAI Workspace Agents` holding 14/30 of the retrieve pool.
+
+    `per_article_cap>1` preserves multi-chunk context for long articles into
+    rerank — a 6G regression showed CEE recall dropped from single-chunk
+    collapse because rerank saw only a narrow excerpt of long pieces.
+    `sort_key="rerank_score"` reuses the same collapse post-rerank to collapse
+    to 1-per-article (article-level MMR input).
     """
-    best_by_article: dict[str, dict[str, Any]] = {}
+    by_article: dict[str, list[dict[str, Any]]] = {}
     for c in chunks:
         aid = c.get("article_id")
         if aid is None:
             continue
-        prev = best_by_article.get(aid)
-        if prev is None or (c.get("score") or 0) > (prev.get("score") or 0):
-            best_by_article[aid] = c
-    ordered = sorted(best_by_article.values(), key=lambda c: -(c.get("score") or 0))
-    return ordered[:top_k]
+        by_article.setdefault(aid, []).append(c)
+
+    for aid, cs in by_article.items():
+        cs.sort(key=lambda c: -(c.get(sort_key) or 0))
+        by_article[aid] = cs[:per_article_cap]
+
+    articles_ordered = sorted(
+        by_article.items(),
+        key=lambda kv: -(kv[1][0].get(sort_key) or 0),
+    )
+
+    out: list[dict[str, Any]] = []
+    for _, cs in articles_ordered[:top_k]:
+        out.extend(cs)
+    return out
+
+
+_SCORES_INT_RE = __import__("re").compile(r"-?\d+")
+
+
+def _recover_scores(raw: str, expected_len: int) -> list[int] | None:
+    """Best-effort rescue: handle three failure modes the live rerank has hit:
+      1. Valid JSON but wrong length — pull the list, pad/trim.
+      2. Truncated/runaway JSON (max_tokens hit mid-array) — regex-extract ints.
+      3. Markdown fences — strip before parsing.
+    Returns None only if we recover <(expected_len - 3) scores; caller falls back."""
+    cleaned = strip_markdown_fences(raw)
+    arr: list[int] | None = None
+
+    try:
+        obj = json.loads(cleaned)
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k.lower() == "scores" and isinstance(v, list):
+                    arr = [int(x) if isinstance(x, (int, float, str)) and str(x).lstrip("-").isdigit() else 5 for x in v]
+                    break
+    except Exception:
+        pass
+
+    if arr is None:
+        # JSON broke — try to regex-extract from the array body. We locate
+        # `"scores": [` and pull integers until the first close-bracket or EOF.
+        import re
+        m = re.search(r'"scores"\s*:\s*\[', cleaned, re.IGNORECASE)
+        if m:
+            body = cleaned[m.end():]
+            end = body.find("]")
+            if end != -1:
+                body = body[:end]
+            arr = [int(x) for x in _SCORES_INT_RE.findall(body)]
+
+    if arr is None or len(arr) < expected_len - 3:
+        return None
+    if len(arr) > expected_len:
+        arr = arr[:expected_len]
+    elif len(arr) < expected_len:
+        arr = arr + [5] * (expected_len - len(arr))
+    return arr
 
 
 def rerank_chunks(
@@ -105,6 +168,10 @@ def rerank_chunks(
         model=RERANK_MODEL,
         response_format={"type": "json_object"},
         temperature=0.3,
+        # Cap output tightly: ~10 tokens per score + small JSON overhead. This
+        # is a hard ceiling that prevents the runaway "line 4096" pathology we
+        # saw with larger rerank inputs (6H per_article_cap change).
+        max_tokens=min(2000, 200 + 12 * len(chunks)),
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(user)},
@@ -115,9 +182,15 @@ def rerank_chunks(
     try:
         scores = safe_llm_json(raw, "scores", expected_len=len(chunks))
     except LLMShapeError as e:
-        # Fallback: vector order is a sane prior when the reranker misbehaves.
-        log.warning("rerank failed, falling back to vector order: %s", e)
-        return chunks[:top_n]
+        # Soft recovery: if the LLM dropped a few scores (common with 60+ chunks),
+        # pad the tail with neutral=5 rather than discarding the entire rerank.
+        # Going to vector order on an under-length-by-1 wipes out the primary
+        # quality stage — worse than padding a single unknown.
+        scores = _recover_scores(raw, len(chunks))
+        if scores is None:
+            log.warning("rerank failed, falling back to vector order: %s", e)
+            return chunks[:top_n]
+        log.warning("rerank recovered with padding: %s", e)
 
     for i, c in enumerate(chunks):
         try:

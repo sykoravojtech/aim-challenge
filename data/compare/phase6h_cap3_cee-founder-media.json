@@ -1,0 +1,85 @@
+{
+  "headline": "Czech & CEE Founder Media Digest",
+  "date_range": "Apr 24, 2026 (single-day run)",
+  "sections": [
+    {
+      "title": "Funding Announcements",
+      "items": [
+        {
+          "title": "Polish-Based GRAI Secures \u20ac7.65M Seed Funding",
+          "body": "Polish-based GRAI has successfully secured \u20ac7.65 million in seed funding to develop its AI-powered music remix platform, showcasing the growing investment interest in CEE tech startups.",
+          "source_urls": [
+            "https://therecursive.com/grai-secures-e7-65m-seed-funding-to-build-ai-powered-music-remix-platform/"
+          ],
+          "source_count": 1,
+          "item_type": "investment",
+          "relevance_score": 8
+        },
+        {
+          "title": "Polish Warsaw Equity Group Leads \u20ac5M Series A",
+          "body": "The Polish Warsaw Equity Group has led a \u20ac5 million Series A funding round in collaboration with Porsche Ventures, highlighting the active investment landscape in the CEE region.",
+          "source_urls": [
+            "https://therecursive.com/warsaw-equity-group-porsche-ventures-charge-investment-ev-charging/"
+          ],
+          "source_count": 1,
+          "item_type": "investment",
+          "relevance_score": 7
+        }
+      ]
+    },
+    {
+      "title": "Startup Developments",
+      "items": [
+        {
+          "title": "Bulgarian Codery Acquires Elfshock",
+          "body": "Bulgarian-founded Codery has announced the acquisition of Elfshock, specializing in robotic process automation and AI-driven solutions, marking a significant step in Codery's expansion.",
+          "source_urls": [
+            "https://therecursive.com/cee-startup-tech-weekly-two-polish-startups-raise-fresh-funding/"
+          ],
+          "source_count": 1,
+          "item_type": "news",
+          "relevance_score": 6
+        },
+        {
+          "title": "AdScout Welcomes Google Veteran",
+          "body": "AdScout, a Bulgarian startup, has recruited a former Google executive to address the 'trust tax' in advertising, indicating a strategic move to enhance its market position.",
+          "source_urls": [
+            "https://therecursive.com/google-veteran-joins-bulgarian-adscout-to-tackle-trust-tax/"
+          ],
+          "source_count": 1,
+          "item_type": "news",
+          "relevance_score": 5
+        }
+      ]
+    },
+    {
+      "title": "Regional Insights",
+      "items": [
+        {
+          "title": "CEE's Role in Global AI",
+          "body": "A prominent figure in the CEE tech scene emphasizes the region's strengths in applied engineering, positioning it as a key player in the global AI landscape.",
+          "source_urls": [
+            "https://therecursive.com/google-veteran-joins-bulgarian-adscout-to-tackle-trust-tax/"
+          ],
+          "source_count": 1,
+          "item_type": "quote",
+          "relevance_score": 7
+        }
+      ]
+    }
+  ],
+  "_funnel": {
+    "label": "phase6h_cap3",
+    "aim_id": "cee-founder-media",
+    "retrieved_raw": 603,
+    "retrieved": 80,
+    "unique_articles": 40,
+    "per_article_cap": 2,
+    "reranked": 15,
+    "reranked_unique": 8,
+    "diversified": 8,
+    "sections": 3,
+    "items": 5
+  },
+  "_captured_at": "2026-04-24T13:35:37.515668+00:00"
+}

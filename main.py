@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,6 +63,11 @@ RETRIEVE_RAW_K = 1000
 RERANK_TOP_N = 15
 MMR_TOP_K = 10
 MMR_LAMBDA = 0.7
+# How many chunks per article to keep into rerank — 2 preserves multi-chunk
+# context for long pieces (CEE fix) without blowing out the rerank JSON size.
+# cap=3 produced 119 chunks which made gpt-4o-mini runaway-generate and fall
+# back to vector order; cap=2 keeps ~80 chunks, comfortable under the limit.
+PER_ARTICLE_CAP = 2
 
 logging.basicConfig(
     level=logging.INFO,
@@ -176,11 +182,15 @@ def get_digest_status(digest_id: str) -> dict[str, Any] | Digest:
     # If the job is live and not yet complete, surface the stage name.
     tracker = JOB_STATUS.get(digest_id)
     if tracker and tracker["status"] not in ("complete", "failed"):
+        t0 = tracker.get("_stage_started_at")
+        elapsed_s = round(time.perf_counter() - t0, 1) if t0 else None
         return {
             "digest_id": digest_id,
             "status": tracker["status"],
             "aim_id": tracker["aim_id"],
             "mode": tracker["mode"],
+            "elapsed_s": elapsed_s,
+            "funnel": tracker.get("funnel", {}),
         }
     # Completed (or never seen by this process) — try disk.
     digest = storage.get_digest(digest_id)
@@ -209,6 +219,7 @@ app.mount("/", StaticFiles(directory=str(ROOT / "static"), html=True), name="sta
 def _set_stage(digest_id: str, stage: str) -> None:
     entry = JOB_STATUS.setdefault(digest_id, {})
     entry["status"] = stage
+    entry["_stage_started_at"] = time.perf_counter()
     log.info("[%s] → %s", digest_id, stage)
 
 
@@ -252,6 +263,10 @@ def run_pipeline(aim_id: str, digest_id: str, mode: Mode) -> None:
     """BackgroundTask entry point. Never raise — any failure becomes a
     `status=failed` Digest on disk so the caller gets a useful 200 back."""
     funnel: dict[str, Any] = {"aim_id": aim_id, "digest_id": digest_id, "mode": mode}
+    timing: dict[str, int] = {}
+    funnel["timing_ms"] = timing
+    # Store live reference so GET /digest can surface partial funnel while running.
+    JOB_STATUS.setdefault(digest_id, {})["funnel"] = funnel
     try:
         aim = storage.get_aim(aim_id)
         if aim is None:
@@ -264,12 +279,14 @@ def run_pipeline(aim_id: str, digest_id: str, mode: Mode) -> None:
         if mode == "cached":
             log.info("[%s] cached mode — skipping ingest, retrieving against current Pinecone state", digest_id)
         else:
+            t0 = time.perf_counter()
             _set_stage(digest_id, "ingesting")
             seen_ids = storage.get_seen_article_ids() if mode == "incremental" else None
             docs, source_stats = ingest_all_sources(seen_ids=seen_ids)
             funnel["ingested"] = len(docs)
             funnel["source_stats"] = source_stats
-            log.info("[%s] ingested %d docs", digest_id, len(docs))
+            timing["ingesting"] = round((time.perf_counter() - t0) * 1000)
+            log.info("[%s] ingested %d docs in %.1fs", digest_id, len(docs), timing["ingesting"] / 1000)
 
             if docs:
                 raw_payload = [d.to_dict() for d in docs]
@@ -278,26 +295,34 @@ def run_pipeline(aim_id: str, digest_id: str, mode: Mode) -> None:
                 mirror_raw_to_bq(raw_payload, digest_id)
                 mirror_raw_to_gcs(raw_payload, digest_id)
 
+                t0 = time.perf_counter()
                 _set_stage(digest_id, "processing")
                 chunks = chunk_articles(docs)
                 funnel["chunked"] = len(chunks)
+                timing["processing"] = round((time.perf_counter() - t0) * 1000)
 
+                t0 = time.perf_counter()
                 _set_stage(digest_id, "embedding")
                 embeddings = embed_texts(oai, [c["text"] for c in chunks])
                 funnel["embedded"] = len(embeddings)
+                timing["embedding"] = round((time.perf_counter() - t0) * 1000)
 
+                t0 = time.perf_counter()
                 _set_stage(digest_id, "upserting")
                 upsert_result = upsert_chunks(index, chunks, embeddings)
                 funnel["upserted"] = upsert_result["upserted"]
                 funnel["semantic_dups"] = upsert_result["semantic_dups"]
+                timing["upserting"] = round((time.perf_counter() - t0) * 1000)
                 log.info(
-                    "[%s] upserted %d / %d chunks (tier3 semantic_dups=%d)",
+                    "[%s] upserted %d / %d chunks (tier3 semantic_dups=%d) in %.1fs",
                     digest_id,
                     upsert_result["upserted"],
                     upsert_result["candidates"],
                     upsert_result["semantic_dups"],
+                    timing["upserting"] / 1000,
                 )
 
+        t0 = time.perf_counter()
         _set_stage(digest_id, "retrieving")
         q_emb = embed_texts(oai, [build_query_text(aim)])[0]
         raw_chunks = vector_query(
@@ -307,33 +332,56 @@ def run_pipeline(aim_id: str, digest_id: str, mode: Mode) -> None:
             filter=build_query_filter(aim),
             include_values=True,
         )
-        # Phase 6G: collapse to unique articles. See retrieval.collapse_chunks_by_article.
-        retrieved = collapse_chunks_by_article(raw_chunks, top_k=RETRIEVE_TOP_K)
+        # Phase 6G: collapse to unique articles, preserving up to PER_ARTICLE_CAP
+        # chunks per article so rerank sees multi-chunk context for long pieces
+        # (CEE regression fix — single-chunk collapse starved long articles at rerank).
+        retrieved = collapse_chunks_by_article(
+            raw_chunks, top_k=RETRIEVE_TOP_K, per_article_cap=PER_ARTICLE_CAP
+        )
         funnel["retrieved_raw"] = len(raw_chunks)
         funnel["retrieved"] = len(retrieved)
+        funnel["unique_articles"] = len({c["article_id"] for c in retrieved if c.get("article_id")})
+        timing["retrieving"] = round((time.perf_counter() - t0) * 1000)
         log.info(
-            "[%s] retrieve funnel: raw=%d → unique_articles=%d (top_k=%d)",
-            digest_id, len(raw_chunks), len(retrieved), RETRIEVE_TOP_K,
+            "[%s] retrieve funnel: raw=%d → chunks=%d across %d articles (top_k=%d, cap=%d) in %.1fs",
+            digest_id, len(raw_chunks), len(retrieved),
+            funnel["unique_articles"], RETRIEVE_TOP_K, PER_ARTICLE_CAP,
+            timing["retrieving"] / 1000,
         )
         if not retrieved:
             log.warning("[%s] retrieval returned 0 chunks; regions=%s", digest_id, aim.regions)
 
+        t0 = time.perf_counter()
         _set_stage(digest_id, "reranking")
         reranked = rerank_chunks(oai, retrieved, aim, top_n=RERANK_TOP_N)
         funnel["reranked"] = len(reranked)
+        timing["reranking"] = round((time.perf_counter() - t0) * 1000)
 
+        # Post-rerank: collapse back to 1 chunk per article (best rerank_score)
+        # so the user-facing digest has one item per story, not multiple
+        # chunks from the same piece.
+        reranked_unique = collapse_chunks_by_article(
+            reranked, top_k=MMR_TOP_K * 2, per_article_cap=1, sort_key="rerank_score"
+        )
+        funnel["reranked_unique"] = len(reranked_unique)
+
+        t0 = time.perf_counter()
         _set_stage(digest_id, "diversifying")
-        diversified = mmr_diversify(reranked, q_emb, top_k=MMR_TOP_K, lambda_=MMR_LAMBDA)
+        diversified = mmr_diversify(reranked_unique, q_emb, top_k=MMR_TOP_K, lambda_=MMR_LAMBDA)
         funnel["diversified"] = len(diversified)
+        timing["diversifying"] = round((time.perf_counter() - t0) * 1000)
         log.info(
-            "[%s] rerank+mmr funnel: %d → %d → %d",
-            digest_id, len(retrieved), len(reranked), len(diversified),
+            "[%s] rerank+mmr funnel: %d → %d → unique=%d → %d in %.1fs+%.1fs",
+            digest_id, len(retrieved), len(reranked), len(reranked_unique), len(diversified),
+            timing["reranking"] / 1000, timing["diversifying"] / 1000,
         )
 
+        t0 = time.perf_counter()
         _set_stage(digest_id, "generating")
         raw_digest = generate_digest(oai, aim, diversified)
         funnel["sections"] = len(raw_digest.get("sections", []))
         funnel["items"] = sum(len(s.get("items", [])) for s in raw_digest.get("sections", []))
+        timing["generating"] = round((time.perf_counter() - t0) * 1000)
 
         digest = _to_digest_model(digest_id, aim_id, mode, raw_digest, status="complete", funnel=funnel)
         storage.save_digest(digest)

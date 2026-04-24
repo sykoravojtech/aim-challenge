@@ -1,0 +1,65 @@
+{
+  "headline": "SaaS-AI Legislative Update",
+  "date_range": "Apr 24, 2026 (single-day run)",
+  "sections": [
+    {
+      "title": "Legislative Developments",
+      "items": [
+        {
+          "title": "Surveillance Accountability Act Introduced",
+          "body": "The Surveillance Accountability Act (H.R. 8470) was introduced in Congress on April 23, 2026. This bill is currently in the first stage of the legislative process and will be considered by committee before potentially advancing to the House or Senate.",
+          "source_urls": [
+            "https://www.govtrack.us/congress/bills/119/hr8470"
+          ],
+          "source_count": 1,
+          "item_type": "legislation",
+          "relevance_score": 8
+        }
+      ]
+    },
+    {
+      "title": "Regulatory Insights",
+      "items": [
+        {
+          "title": "OpenAI's Compliance API Enhancements",
+          "body": "OpenAI has introduced a Compliance API that provides visibility into agent configurations, updates, and run histories, which is crucial for organizations concerned about compliance and regulatory adherence.",
+          "source_urls": [
+            "https://venturebeat.com/orchestration/openai-unveils-workspace-agents-a-successor-to-custom-gpts-for-enterprises-that-can-plug-directly-into-slack-salesforce-and-more"
+          ],
+          "source_count": 1,
+          "item_type": "regulatory",
+          "relevance_score": 7
+        }
+      ]
+    },
+    {
+      "title": "AI Product Developments",
+      "items": [
+        {
+          "title": "Launch of Privacy Filter by OpenAI",
+          "body": "OpenAI has launched the Privacy Filter, an open-source tool designed to sanitize enterprise datasets by removing personal information. This initiative aims to enhance the safety of AI deployments in sensitive environments.",
+          "source_urls": [
+            "https://venturebeat.com/data/openai-launches-privacy-filter-an-open-source-on-device-data-sanitization-model-that-removes-personal-information-from-enterprise-datasets"
+          ],
+          "source_count": 1,
+          "item_type": "product_update",
+          "relevance_score": 9
+        }
+      ]
+    }
+  ],
+  "_funnel": {
+    "label": "phase6h_cap3",
+    "aim_id": "saas-ai-legislation",
+    "retrieved_raw": 564,
+    "retrieved": 67,
+    "unique_articles": 40,
+    "per_article_cap": 2,
+    "reranked": 15,
+    "reranked_unique": 8,
+    "diversified": 8,
+    "sections": 3,
+    "items": 3
+  },
+  "_captured_at": "2026-04-24T13:37:11.031307+00:00"
+}

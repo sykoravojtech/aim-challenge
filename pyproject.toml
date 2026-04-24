@@ -21,3 +21,8 @@ dependencies = [
     "google-cloud-storage>=2.19",
     "numpy>=2.4.4",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]

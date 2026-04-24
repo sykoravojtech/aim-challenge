@@ -252,11 +252,7 @@ async function deleteAim(aim) {
 async function generateDigest(aim, mode, row) {
   setRowStatus(row, "running", `${mode} · queueing…`);
   digestMetaLine.textContent = `${aim.title} — ${mode}`;
-  digestView.innerHTML = `
-    <div class="card" style="display:flex; align-items:center; gap:12px;">
-      <span class="spinner"></span>
-      <span>Pipeline running for <strong>${esc(aim.title)}</strong> in <code>${esc(mode)}</code> mode…</span>
-    </div>`;
+  digestView.innerHTML = renderRunningCard(aim, mode, "queued", null, {});
   let jobId;
   try {
     const res = await fetch(
@@ -308,8 +304,10 @@ async function pollDigest(aim, jobId, row, mode) {
       if (details?.open) loadHistory(aim, row);
       return;
     }
-    setRowStatus(row, "running", `${mode} · ${data.status || "queued"}…`);
-    aimState.set(aim.aim_id, { jobId, status: data.status || "queued", mode, startedAt: aimState.get(aim.aim_id)?.startedAt || Date.now() });
+    const stage = data.status || "queued";
+    setRowStatus(row, "running", `${mode} · ${stage}…`);
+    aimState.set(aim.aim_id, { jobId, status: stage, mode, startedAt: aimState.get(aim.aim_id)?.startedAt || Date.now() });
+    digestView.innerHTML = renderRunningCard(aim, mode, stage, data.elapsed_s ?? null, data.funnel || {});
     await sleep(POLL_MS);
   }
 }
