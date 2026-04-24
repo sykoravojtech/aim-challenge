@@ -109,7 +109,7 @@ Phase numbers map to the brief's demands; the clock is what matters (`data/compa
 
 | Phase | Work | Time | Done when |
 |---|---|---|---|
-| 0 | Walking skeleton: 1 hardcoded Aim, **~10 region-weighted sources** (not 5), hybrid filter wired, print Digest JSON | 60–90 min | `uv run python scripts/run_pipeline.py` prints a valid Digest whose source URLs are real |
+| 0 | Walking skeleton: 1 hardcoded Aim, **~10 region-weighted sources** (not 5), hybrid filter wired, print Digest JSON | 60–90 min | `uv run python scripts/phase0_skeleton.py` prints a valid Digest whose source URLs are real |
 | 1 | FastAPI + full Aim CRUD (POST/GET/PUT/DELETE) + **three-mode digest trigger** (`incremental\|force\|cached`) + local JSON storage | 60 min | curl flow works; `cached` mode runs in <10 s |
 | 2 | Dedup (URL md5 live + MinHash + semantic talked-about) + tenacity retries + per-source try/except | 45 min | re-running a digest returns 0 new articles but still a digest |
 | 3 | **Frontend** (vanilla HTML/CSS/JS card-based Digest rendering, Aim form, mode selector) | 60 min | clicking through the UI without curl works |
@@ -128,7 +128,7 @@ Full phase breakdown with clock-based checkpoints + 14:30 fork + final demo stru
 ```bash
 uv sync                                   # install deps
 uv add <pkg>                              # add a dep
-uv run python scripts/run_pipeline.py     # Phase 0 walking skeleton
+uv run python scripts/phase0_skeleton.py  # Phase 0 walking skeleton (frozen artifact)
 uv run uvicorn main:app --reload --port 4444   # Phase 1+ API
 
 # curl smoke test (Phase 1+)

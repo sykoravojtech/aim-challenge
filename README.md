@@ -12,8 +12,8 @@ Written during the Aim hiring challenge — see `docs/` once populated.
 uv sync
 cp .env.example .env            # fill in OPENAI_API_KEY, PINECONE_API_KEY
 
-# Phase 0 walking skeleton (no API):
-uv run python scripts/run_pipeline.py
+# Phase 0 walking skeleton (frozen demo artifact, no API):
+uv run python scripts/phase0_skeleton.py
 
 # Phase 1+ FastAPI:
 uv run uvicorn main:app --reload --port 4444

@@ -127,7 +127,7 @@ Per-phase guidance is inline under **Subagent fan-out:** in each phase below.
 
 No FastAPI. No dedup. No rerank. No dynamic sections yet (flat digest OK if the LLM struggles on section titles first time).
 
-**Deliverable:** `scripts/run_pipeline.py` (single file) and a `safe_llm_json(raw, key, expected_len)` helper living in `pipeline/_util.py`.
+**Deliverable:** `scripts/phase0_skeleton.py` (single file, frozen as interview exhibit after Phase 1 modularises) and a `safe_llm_json(raw, key, expected_len)` helper living in `pipeline/_util.py`.
 
 **Checklist:**
 - [x] Create Pinecone index `aim-chunks` (`dim=1536`, `cosine`) if not already live
@@ -143,7 +143,7 @@ No FastAPI. No dedup. No rerank. No dynamic sections yet (flat digest OK if the 
 - [x] Log funnel metrics at every stage: `INGESTED=N, EXTRACTED=N, CHUNKED=N, EMBEDDED=N, UPSERTED=N, RETRIEVED=N`
 - [x] `print(json.dumps(digest, indent=2))`
 
-**Done when:** `uv run python scripts/run_pipeline.py` prints a valid Digest JSON whose `sections[*].items[*].source_urls[*]` are real, ingested article URLs.
+**Done when:** `uv run python scripts/phase0_skeleton.py` prints a valid Digest JSON whose `sections[*].items[*].source_urls[*]` are real, ingested article URLs.
 
 **Subagent fan-out:** one early only — single message, parallel `WebFetch` (or one Explore agent) to smoke-test all 10 RSS URLs and report which have non-empty `.entries` with body content. Saves ~10 min vs serial validation and catches silent-empty feeds (see LESSONS). Everything else in Phase 0 is solo — integration debugging is where *you* learn the shape, and the HoE will ask "what surprised you."
 
@@ -168,7 +168,7 @@ Binary `force` flags want to be three-mode the moment there's a UI (demo iterati
 **Deliverable:** `main.py` + split `pipeline/` module + `models/schemas.py` + `pipeline/storage.py`.
 
 **Checklist:**
-- [ ] Split `scripts/run_pipeline.py` into `pipeline/{ingestion,processing,embedding,vector_store,retrieval,report,storage}.py`
+- [ ] Split `scripts/phase0_skeleton.py` into `pipeline/{ingestion,processing,embedding,vector_store,retrieval,report,storage}.py` (leave the Phase 0 script in place as a frozen exhibit)
 - [ ] `models/schemas.py`: `Aim`, `AimCreate`, `DigestItem`, `DigestSection`, `Digest` (Pydantic v2). Schema per [PRODUCT_NOTES](PRODUCT_NOTES.md).
 - [ ] `pipeline/storage.py`: local JSON IO under `data/aims/`, `data/digests/`, `data/raw/`
 - [ ] Endpoints:
@@ -188,7 +188,7 @@ Binary `force` flags want to be three-mode the moment there's a UI (demo iterati
 **Subagent fan-out:** spawn 2 in parallel, main session refactors in-place:
 - **A → `models/schemas.py`**: Pydantic v2 models for `Aim`, `AimCreate`, `DigestItem`, `DigestSection`, `Digest` per [PRODUCT_NOTES.md](PRODUCT_NOTES.md).
 - **B → `pipeline/storage.py`**: JSON CRUD for `data/aims/*.json` + `data/digests/*.json` (save/get/update/delete/list_for_user + save_digest/get_digest).
-- **Main session**: split `scripts/run_pipeline.py` into `pipeline/{ingestion,processing,embedding,vector_store,retrieval,report}.py`, write `main.py` FastAPI + BackgroundTask + three-mode trigger.
+- **Main session**: split `scripts/phase0_skeleton.py` into `pipeline/{ingestion,processing,embedding,vector_store,retrieval,report}.py`, write `main.py` FastAPI + BackgroundTask + three-mode trigger.
 
 Save ~20 min. Main session integrates (imports, job_status dict, endpoint wiring) and runs the curl smoke test.
 

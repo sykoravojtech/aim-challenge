@@ -56,7 +56,7 @@ Rule: before adding rerank, verify the pool has at least ~3× as many distinct o
 
 **What surprised me:** `federalregister.gov` SEC search.rss (302 → non-RSS payload, `bozo=1`, 0 entries), `hn.cz/feed` (404 HTML), and `euvc.com/feed` (HTML-not-XML, `bozo=1` undefined entity) all return `feed.entries=[]` with no exception — exactly the silent-empty trap from the standing idiom. Caught by the pre-flight smoke-test subagent, so cost was 0 min; without the smoke test these would have silently produced 0 chunks each for regions/source_types that matter.
 
-**Context:** `ROADMAP § Source plan` hardcodes 10 feeds; 3 were dead on arrival. The replacements shipped in `scripts/run_pipeline.py` are: `sec.gov/news/pressreleases.rss` (US regulatory), `lupa.cz/rss/clanky/` (Czechia news), `therecursive.com/feed/` (CEE news). The replacements give 4 Czech/CEE feeds, keeping the two demo Aims' pools balanced.
+**Context:** `ROADMAP § Source plan` hardcodes 10 feeds; 3 were dead on arrival. The replacements shipped in `scripts/phase0_skeleton.py` (and mirrored into `pipeline/ingestion.py:SOURCES` for the live API) are: `sec.gov/news/pressreleases.rss` (US regulatory), `lupa.cz/rss/clanky/` (Czechia news), `therecursive.com/feed/` (CEE news). The replacements give 4 Czech/CEE feeds, keeping the two demo Aims' pools balanced.
 
 **What to do about it:** Before trusting any hardcoded feed list, run a parallel smoke-test (one script, 10 URLs, print `status/entries/bozo` per feed). Any feed that returns `entries=[]` *at all* is dead to us — don't debug, swap. Keep `therecursive.com`, `lupa.cz`, `sec.gov/news/pressreleases.rss` as known-good CEE/US substitutes.
 

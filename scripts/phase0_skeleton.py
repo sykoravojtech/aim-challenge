@@ -1,14 +1,16 @@
-"""Phase 0 walking skeleton — one script, end-to-end, one hardcoded Aim.
+"""Phase 0 walking skeleton — frozen demo artifact, NOT the runtime path.
+
+Status: superseded by ``main.py`` + ``pipeline/*.py`` in Phase 1. Kept verbatim
+as an interview exhibit for the "walking skeleton first" principle (see
+CLAUDE.md). Editing this file does NOT affect the live API — SOURCES and AIMS
+are intentionally duplicated from ``pipeline/ingestion.py`` / seeded aims so
+this file reads top-to-bottom as a single ~560-line end-to-end pipeline.
 
 Flow: ingest (RSS) → extract (trafilatura, fallback to RSS summary) → chunk
 (LangChain Recursive, 800/100, title prepended) → embed (text-embedding-3-small,
 batched) → upsert (Pinecone, metadata carries region + source_type) → retrieve
 (hybrid filter: region $in aim.regions + Global) → generate (gpt-4o-mini, JSON
 mode, dynamic section titles) → print Digest JSON.
-
-The same 10 sources are hardcoded here and the Aim is the CEE founder one from
-ROADMAP (per ROADMAP guidance — it's the more concrete smoke test). A second
-Aim is defined for Phase 1 but not run here.
 
 No FastAPI, no dedup, no rerank. Every stage logs a funnel line.
 """
