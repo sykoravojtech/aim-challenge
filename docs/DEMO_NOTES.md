@@ -78,6 +78,27 @@ Pick the highest-signal entries from [DECISIONS.md](DECISIONS.md) to foreground.
 
 ---
 
+## 2.5 The eval harness — what three layers of evidence bought
+
+The strongest thread to pull in the demo. Three beats, all measured, all happened today.
+
+**Beat 1 — Built an eval harness, not just a pipeline.** `scripts/eval_digest.py` + `evals/golden.jsonl` (20 hand-labelled rows across both Aims) + LLM-as-judge (`gpt-4o-mini`) scoring each item 1–5 on `{relevance, specificity, non-duplication}`. Ran it phase-over-phase on the CEE Aim — caught that **pure rerank hurt recall** (0.44 → 0.33) before MMR repaired it (0.33 → 0.44, non-dup held at 4.50). That's the diversity-vs-coverage trade visible in numbers, not vibes. Summary: [`data/evals/SUMMARY.md`](../data/evals/SUMMARY.md).
+
+**Beat 2 — Eval caught a corpus bug. I fixed it.** Saas-AI-Legislation Aim scored **0.00 recall, 2.50/5 relevance** on its first snapshot — the digest read fine (OpenAI product news) but wasn't answering the legislation question. Diagnosed: the brief's #1 example source (Congress) was stubbed. Fix: **promoted `CongressConnector` stub → live** via GovTrack.us JSON API (keyless proxy for Congress.gov — production swap is endpoint + Secret Manager key, same shape). Re-ran the same eval: **relevance 2.50 → 3.00, specificity 3.50 → 4.00, a real Congress bill (H.R. 8470 Surveillance Accountability Act) took the top slot at 5/5 relevance + 4 specificity + 5 non-dup.**
+
+**Beat 3 — The fix exposed a ranking bug underneath.** But recall stayed 0.00. First hypothesis was "golden URLs rolled off the feeds" — checked, **wrong**: all 6 golden SEC press releases are in `data/raw/` and live in Pinecone. So retrieval *has* them; rerank or MMR is actively dropping them. That's a concrete ranking-stage lead, filed as [ROADMAP § 6G](ROADMAP.md) with three testable culprits (source-type-blind rerank prompt / MMR over-diversifying the SEC cluster / recency tilt). **Diagnostic first, fix second** — 30 min to instrument, then the right fix is one-line.
+
+**The closing line for the demo:**
+> *"The eval caught a corpus bug, I fixed it, the fix exposed a ranking bug underneath, and the cleaner eval harness I'd build next uses infra I already shipped in Phase 5 for a different reason (GCS bronze + BigQuery `raw_articles` as snapshot storage for content-pinned golden labels, filed as 6H). That's the whole day in one thread: measurement drove the fixes, and the infra I already had turned out to solve the next eval problem too."*
+
+**Why this matters for the brief's four themes:**
+- *How it works* → evals are the proof that multi-stage ranking beats one giant LLM call with actual numbers.
+- *Why these choices* → every claim now has a scorecard.
+- *What's next with a week* → 6G (ranking bug) + 6H (snapshot-backed golden set) are both surgical, both named, both sized.
+- *Biggest risks* → you name the saas ranking bug honestly and show the diagnostic path.
+
+---
+
 ## 3. What I chose to go deep on — the 14:30 fork
 
 The 14:30 alarm forces an explicit trade-off call. Name it aloud at demo.

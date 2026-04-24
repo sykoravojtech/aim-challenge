@@ -257,12 +257,12 @@ Open the page in the browser yourself — don't delegate the visual check.
 **Goal:** Noticeably better digest quality, provable via `compare_digests.py`.
 
 **Checklist:**
-- [ ] `retrieval.rerank_chunks(chunks, aim, top_n=15)` — one `gpt-4o-mini` call, JSON mode, receives full structured Aim, returns `{scores:[int]}`. **All defensive shape handling goes through `safe_llm_json` — truncate on over-length, fail loudly on under-length, strip markdown fences.** See [LESSONS § LLM output-shape handling](LESSONS.md#llm-output-shape-handling).
-- [ ] Wire: `retrieve(top_k=30)` → `rerank(top_n=15)` → `mmr_diversity(λ=0.7)` → `generate_digest(top_10)`
-- [ ] MMR using Pinecone's returned embeddings (or recompute — cheap)
-- [ ] `scripts/compare_digests.py` — takes two digest JSON paths, prints: section count, item count, unique URLs, distinct hosts, region coverage, item_type mix, URL Jaccard.
-- [ ] Capture all four cells of the 2×2 so rerank and source-expansion effects are separable, not confounded: `{phase2_dedup.json, phase4_rerank_only.json, phase4_sources_only.json, phase4_full.json}`
-- [ ] Eyeball each transition; append surprises to [LESSONS.md](LESSONS.md)
+- [x] `retrieval.rerank_chunks(chunks, aim, top_n=15)` — one `gpt-4o-mini` call, JSON mode, receives full structured Aim, returns `{scores:[int]}`. **All defensive shape handling goes through `safe_llm_json` — truncate on over-length, fail loudly on under-length, strip markdown fences.** See [LESSONS § LLM output-shape handling](LESSONS.md#llm-output-shape-handling).
+- [x] Wire: `retrieve(top_k=30)` → `rerank(top_n=15)` → `mmr_diversity(λ=0.7)` → `generate_digest(top_10)`
+- [x] MMR using Pinecone's returned embeddings (or recompute — cheap)
+- [x] `scripts/compare_digests.py` — takes two digest JSON paths, prints: section count, item count, unique URLs, distinct hosts, region coverage, item_type mix, URL Jaccard.
+- [x] Capture all four cells of the 2×2 so rerank and source-expansion effects are separable, not confounded: `{phase2_dedup.json, phase4_rerank_only.json, phase4_sources_only.json, phase4_full.json}`
+- [x] Eyeball each transition; append surprises to [LESSONS.md](LESSONS.md)
 
 **Done when:** `uv run python scripts/compare_digests.py data/compare/phase2_dedup.json data/compare/phase4_full.json` prints a readable diff table; finding recorded in LESSONS.md.
 
@@ -395,3 +395,86 @@ Tick as each lands:
 - [x] Phase 5f — Cloud Run deploy with Secret Manager (the goal) — **live at https://aim-645297577758.europe-west3.run.app**
 - [x] ~~Phase 5c — VertexAI embeddings~~ (cut: Pinecone reindex cost > signal)
 - [x] ~~Phase 5d — Typed digest items~~ (cut: product, not infra)
+- [ ] Phase 6 — Post-ship high-value additions (see below)
+
+---
+
+## Phase 6 — Post-ship high-value additions (4 hrs remaining, ~13:00)
+
+With the deployed URL green and Phase 5 done, the remaining gaps are the things that make the demo *defensible under pushback*. Ranked by leverage; pick top-down until the 14:30 alarm.
+
+### 6A — Eval harness (90 min) ⭐ highest leverage
+There's no current answer to "how do you know the digest is good?" other than eyeballing.
+
+- [x] `evals/golden.jsonl` — 21 hand-labeled `(aim_id, source_url, should_appear)` pairs across the two demo Aims (9 pos + 3 neg for CEE; 6 pos + 3 neg for SaaS-AI)
+- [x] `scripts/eval_digest.py` — scores a captured Digest JSON: **recall@k / precision-on-labelled** vs golden + **LLM-as-judge** (gpt-4o-mini) scoring each item on {relevance, specificity, non_duplication} 1–5 with justification
+- [x] Writes `data/evals/run_<ts>_<aim>_<label>.json` so the trend is inspectable. First run on `phase4_full` / CEE: recall@k 0.44 (4/9 pos, 0/3 neg), judge rel 3.25 / spec 3.75 / nondup 4.25 (n=4)
+- [ ] Hook into `scripts/compare_digests.py` so every compare artifact gets a number attached
+
+**Demo payoff:** converts every other change ("did dedup help? did rerank help?") from vibe into measurable claim.
+
+### 6B — Wire dedup Tier 2 + 3 for real (60 min)
+CLAUDE.md currently admits MinHash and semantic dedup are "talked about, not wired" — a known soft spot the brief explicitly grades.
+
+- [ ] `datasketch` MinHashLSH over shingled article text (threshold 0.8) → near-duplicate cluster id
+- [ ] Cosine-similarity pass on title+lede embeddings (threshold 0.92) catches paraphrases MinHash misses
+- [ ] Log the funnel collapse: `"412 raw → 387 url-unique → 361 minhash-unique → 352 semantic-unique"`
+- [ ] Highest-authority source wins within each cluster
+
+**Demo moment:** ingest same event from Reuters + AP + Bloomberg, show all three collapse to one. Eval harness (6A) then proves duplicate rate dropped 18% → 2% with recall@10 unchanged.
+
+### 6C — Pinecone region colocation (30 min, can run in background)
+From parallel investigation: Pinecone serverless runs natively on GCP `europe-west4`, adjacent to Cloud Run `europe-west3`. Current index is cross-region → ~500× latency hit.
+
+- [ ] Create new serverless index in `europe-west4`
+- [ ] Re-embed + upsert 620 existing chunks (zero code change, just re-run ingest against new index)
+- [ ] Flip `PINECONE_INDEX` env var on Cloud Run, redeploy
+- [ ] Measure before/after p95 retrieval latency — expect sub-50ms
+
+**Demo narration already in DEMO_NOTES § 6 as "L6 demo narration."** Lead with root cause, admit brief-scalability tension, present 3 fixes ranked by effort.
+
+### 6D — Cross-encoder rerank stage (30 min)
+CLAUDE.md quotes "Pinecone reranking cuts 85% cost vs passing all to GPT-4o" — if that line is in the docs but not in the code, it's a bluff waiting to be called. Verify whether this is wired; if not, wire Pinecone's built-in reranker or Cohere Rerank between ANN and LLM rerank.
+
+### 6E — `/metrics` endpoint + structured per-stage logging (45 min)
+Makes "inspectable intermediate outputs" a *live* artifact, not a design claim.
+- [ ] Funnel counts per stage, p50/p95 latencies, per-source success rates over last N runs
+- [ ] JSON response, renderable in frontend later
+
+### 6F — One more live source (SEC EDGAR JSON, 45 min)
+Promotes a registered stub to live. Makes "heterogeneous" concrete. Only if 6A+6B already done.
+
+### Cloud Run hardening (5 min, do now)
+- [ ] Set `--no-cpu-throttling` on Cloud Run service. Stays in free tier until ~300 full ingests/month. Safe one-command safety net before demo.
+
+### Scalability layers (talk track, don't build)
+Three-layer fix to 10k docs/day per user — name each verbally during the scaling question:
+1. Pinecone region colocation (6C) — latency
+2. Batch Tier-3 semantic dedup — throughput
+3. Cloud Run Jobs for ingest fan-out — horizontal scale
+
+### 6G — Rerank/MMR ranking-stage bug (follow-up, surfaced by eval harness) 🔍
+**Lead, not yet fixed.** Eval re-run on saas-ai-legislation after wiring GovTrack showed judge relevance 2.50 → 3.00 (corpus fix worked) but **recall@k stayed 0.00**. Verified the 6 golden SEC press releases are all ingested and live in Pinecone — so retrieval has them, rerank or MMR is dropping them.
+
+Three plausible culprits to instrument:
+1. **Rerank scores regulatory prose lower than news-style headlines.** `gpt-4o-mini` rerank prompt doesn't weight `source_type`. Fix: include `source_type` in rerank context, or add a boost when `source_type ∈ aim.update_types`.
+2. **MMR over-diversifies an SEC cluster.** 5 of 6 golden positives are SEC press releases — once one lands, MMR penalises the other four. Fix: loosen MMR λ when the Aim is topically narrow (`len(update_types) ≤ 2`), or cluster-cap rather than item-cap.
+3. **Recency tilt in cheap-filter stage.** Older SEC filings lose to this morning's OpenAI posts. Fix: decay half-life configurable per `source_type`.
+
+**Diagnostic first, fix second.** Add per-stage logging: for each golden URL, trace retrieved rank → rerank rank → post-MMR inclusion. ~30 min to instrument; then decide which of the three fixes moves recall most.
+
+### 6H — Upgrade golden set to snapshot-backed (follow-up)
+Current `evals/golden.jsonl` is URL-only — fragile if a source URL 404s later. **Phase 5 already built the fix**: GCS bronze + BigQuery `raw_articles` persist content keyed on `article_id` (md5-of-URL). Swap the golden set to `{article_id, source_url, content_hash}` triples and reconstitute content from GCS on eval. ~45 min. The snapshot infra exists; the harness just isn't using it.
+
+### Skip
+- Pub/Sub / Cloud Tasks fan-out — 2 hrs infra for identical demo semantics
+- Prompt caching — real cost win, invisible at demo scale
+- More Cloud Run tuning beyond `--no-cpu-throttling`
+- **6D cross-encoder rerank** — deprioritised by 6G's finding. Ranking *is* the bottleneck, but a fancier reranker on top of the current prompt won't help until we diagnose why current rerank drops SEC content. Root cause first.
+
+### Order of operations (actual, as executed)
+1. ✅ `--no-cpu-throttling` (5 min) — revision `aim-00002-swg`, 152s end-to-end digest latency on deployed URL
+2. ✅ 6A eval harness (90 min) — phase-over-phase CEE scorecard + saas snapshot
+3. ✅ 6F-lite: GovTrack legislation connector wired live (promoted from stub) — saas judge relevance 2.50 → 3.00, Congress bill at top slot
+4. 🔍 **6G surfaced** by the saas re-eval: recall@0 is a ranking-stage bug, not a corpus bug. Filed, not fixed.
+5. **14:30 fork** — rehearsal over more code. 6G / 6H / 6B / 6C are all solid "next with a week" candidates.
