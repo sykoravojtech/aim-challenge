@@ -3,27 +3,39 @@
 ---
 
 ### Context
-**Aim** briefs users on the exact information they care about before anyone else knows it exists. Examples of user requests include:
-* “Brief me on US Congress filings, debates, hearings, and early legislative movements that might affect my business.”
-* “Every signal on social media, podcasts, news, videos, transcripts, blogs, SEC filings, and niche websites relevant to my markets.”
+**Aim** briefs users on the exact information they care about. Before anyone else knows it exists.
 
-Users typically have a very clear idea of where to look and what to digest. The pipeline must continuously ingest heterogeneous data, normalize it, extract signal, and output approximately **10 highly relevant insights per day** from a daily firehose of **10,000 documents per user**. This system must be scalable, robust, and deliver insights ideally instantly.
+A user can ask: “Brief me on US Congress filings, debates, hearings, and early legislative movements that might affect my business.” Another user might ask: “Every signal on social media, podcasts, news, videos, transcripts, blogs, SEC filings, and niche websites relevant to my markets.”
+
+Importantly, users already have a very clear idea of where to look and what to digest.
+
+The pipeline must continuously ingest heterogeneous data, normalize it, extract signal, and output only a handful of highly relevant insights (**~10/day/user**) from a daily firehose of **~10k documents/user**.
+
+This must scale. It must be robust. And the insights must be delivered **the same day they appear, ideally instantly**.
 
 ---
 
 ### Problem
 You are designing a **multi-stage data pipeline** that:
-* **Ingests thousands of documents/day** from heterogeneous sources including US Congress Filings, social media (X, LinkedIn, Reddit), podcasts, videos (YouTube/webinars), news, blogs, and long-tail company websites.
-* **Normalizes, enriches, deduplicates, and stores** the raw data.
-* **Produces a ranked list of daily insights** relevant to specific user tasks (e.g., SaaS AI legislative changes or EV supply-chain risks).
-* **Scales effectively** as Aim adds more users with personalized briefings.
-* **Is extendable** to support new source types (e.g., Mexican state institutions or SEC filings) or exploration strategies.
 
-#### Key Pipeline Requirements:
-* Handling unpredictable source reliability.
-* Deduplication (e.g., two distinct articles covering the same event).
-* Multi-stage relevance filtering using LLMs or standard Recommendation Systems.
-* Fault-tolerance and reprocessing capabilities.
+1. **Ingests thousands of documents/day** from heterogeneous sources, for example:
+    * US Congress Filings
+    * Social media (X, LinkedIn, Reddit, etc.)
+    * Podcasts
+    * Videos (YouTube or a random webinar on a particular website)
+    * News and Blogs
+    * long-tail sources: company websites and content
+    * Anything else that matters for the user’s business context
+2. **Normalizes, enriches, deduplicates, and stores** the raw data.
+3. **Produces a ranked list of daily insights** relevant to a specific user task (e.g., “legislative changes that could impact SaaS AI companies”, “supply-chain regulation risk for EV startups”, etc.).
+4. **Is architected so Aim could scale users**, each with their own personalized briefing.
+5. **Is extendable** to support new source types or source exploration strategies. For example, we might learn that a client needs data from Mexican state institutions or SEC filings. How do we facilitate this?
+
+A good pipeline handles:
+* unpredictable source reliability
+* deduplication (e.g. two distinct articles covering the same event)
+* multi-stage relevance filtering using LLMs or standard Recommendation Systems
+* fault-tolerance and reprocessing
 
 ---
 
@@ -31,26 +43,26 @@ You are designing a **multi-stage data pipeline** that:
 Design the system and build a **minimal functional prototype** that demonstrates the critical ideas.
 
 #### Part 1: System Architecture
-Focus on depth over breadth. You are encouraged to use AI tools (ChatGPT, Claude Code, etc.) to assist in the design.
+Depth matters more than breadth. Feel free to use and misuse ChatGPT, Claude Code or any AI of your likings.
 
-#### Part 2: Prototype
-Implement a small demo illustrating the **core logic** of the pipeline. This should showcase your architectural instincts and technical judgment rather than being a full product.
+#### Part 2 — Prototype (small, focused)
+Implement a small demo that illustrates the **core logic** of the pipeline. This is a prototype, not a full product: the goal is to show your architectural instincts and your technical judgment. Again, feel free to use ChatGPT, Claude or AI of your likings as much as possible.
 
 ---
 
 ### Suggestions
-* **Multi-stage Ranking:** Avoid "one giant LLM call".
-* **Modularity:** Every stage should be replaceable independently.
-* **Scalability:** Identify and plan for bottlenecks.
-* **Clarity:** Ensure explicit, inspectable intermediate outputs.
+* Think in **multi-stage ranking** instead of “one giant LLM call”.
+* Think **modularly**: every stage should be replaceable independently.
+* Think **scalability**: what are the bottlenecks and how to overcome them.
+* We value **clarity**: explicit, inspectable intermediate outputs.
 
 ---
 
 ### Expected Output
-By the end of the day, provide:
+By end of day:
 1.  **Prototype repo**.
 2.  **10-minute show & tell** walking through:
-    * How the system works.
-    * The reasoning behind your design choices.
-    * What you would build next if given a week.
-    * What the biggest risks are.
+    * how the system works
+    * why you made the design choices you did
+    * what you would build next if given a week
+    * what the biggest risks are
