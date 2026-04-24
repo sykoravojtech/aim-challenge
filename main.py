@@ -33,7 +33,7 @@ from models.schemas import (  # noqa: E402
 )
 from pipeline import storage  # noqa: E402
 from pipeline.embedding import embed_texts  # noqa: E402
-from pipeline.ingestion import SEED_AIMS, ingest_all_sources  # noqa: E402
+from pipeline.ingestion import SEED_AIMS, ingest_all_sources, mirror_raw_to_bq  # noqa: E402
 from pipeline.processing import chunk_articles  # noqa: E402
 from pipeline.report import generate_digest  # noqa: E402
 from pipeline.retrieval import (  # noqa: E402
@@ -245,7 +245,10 @@ def run_pipeline(aim_id: str, digest_id: str, mode: Mode) -> None:
             log.info("[%s] ingested %d docs", digest_id, len(docs))
 
             if docs:
-                storage.save_raw_articles([d.to_dict() for d in docs], digest_id)
+                raw_payload = [d.to_dict() for d in docs]
+                storage.save_raw_articles(raw_payload, digest_id)
+                # BQ mirror: gated + never-raise. Local JSON above stays dedup truth.
+                mirror_raw_to_bq(raw_payload, digest_id)
 
                 _set_stage(digest_id, "processing")
                 chunks = chunk_articles(docs)

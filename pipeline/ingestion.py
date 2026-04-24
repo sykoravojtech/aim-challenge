@@ -1,12 +1,18 @@
-"""Ingestion — connectors, registry, per-source fan-out with try/except."""
+"""Ingestion — connectors, registry, per-source fan-out with try/except.
+
+Also owns the BigQuery raw-articles mirror (`mirror_raw_to_bq`). Local JSON
+remains dedup truth; BQ is a demo-readable mirror gated behind USE_BIGQUERY.
+"""
 from __future__ import annotations
 
 import calendar
 import hashlib
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Iterable, Protocol
 
 import feedparser
@@ -250,6 +256,152 @@ for _name in ("sec", "congress", "reddit", "x", "linkedin", "youtube", "podcast"
         _Stub.__name__ = f"{n.capitalize()}Connector"
         return _Stub
     register(_name)(_make_stub(_name))
+
+
+# ---------------------------------------------------------------------------
+# BigQuery raw-articles mirror (Phase 5b)
+# ---------------------------------------------------------------------------
+#
+# Local JSON (pipeline.storage.save_raw_articles) stays the source of truth for
+# dedup and replay. This mirror writes the same rows to
+# ``<project>.<BQ_DATASET>.raw_articles`` so a demo viewer (or ad-hoc SQL) can
+# inspect ingestion without cracking open the JSON. Gated behind USE_BIGQUERY
+# so unset/absent creds make it a silent no-op.
+
+_USE_BIGQUERY = os.getenv("USE_BIGQUERY", "").strip().lower() in {"1", "true", "yes"}
+_BQ_DATASET = os.getenv("BQ_DATASET", "aim_pipeline")
+_BQ_TABLE = "raw_articles"
+
+# Sentinel + module-level caches so a good table check only happens once per
+# process (auto-create is a 1/run tax, not a 1/row tax).
+_BQ_UNSET: Any = object()
+_bq_client: Any = _BQ_UNSET
+_bq_table_ready: bool = False
+
+
+def _get_bq_client():
+    """Return a cached BigQuery client, or None if disabled/unavailable.
+
+    Import google-cloud-bigquery lazily so a broken install doesn't kill
+    pipeline import — the mirror is optional.
+    """
+    global _bq_client
+    if not _USE_BIGQUERY:
+        return None
+    if _bq_client is _BQ_UNSET:
+        try:
+            from google.cloud import bigquery  # type: ignore
+
+            _bq_client = bigquery.Client(
+                project=os.environ["GCP_PROJECT_ID"],
+                location=os.environ.get("GCP_LOCATION", "europe-west3"),
+            )
+            log.info("[bigquery] client initialised (project=%s)", os.environ["GCP_PROJECT_ID"])
+        except Exception as e:  # noqa: BLE001 — any init failure should degrade, not crash
+            log.warning("[bigquery] client init failed, mirror disabled: %s", e)
+            _bq_client = None
+    return _bq_client
+
+
+def _ensure_raw_articles_table(client) -> bool:
+    """Auto-create `<dataset>.raw_articles` if missing. Returns True on ready."""
+    global _bq_table_ready
+    if _bq_table_ready:
+        return True
+    try:
+        from google.cloud import bigquery  # type: ignore
+        from google.cloud.exceptions import NotFound  # type: ignore
+    except Exception as e:  # noqa: BLE001
+        log.warning("[bigquery] google-cloud-bigquery import failed: %s", e)
+        return False
+
+    table_ref = f"{client.project}.{_BQ_DATASET}.{_BQ_TABLE}"
+    schema = [
+        bigquery.SchemaField("article_id", "STRING", mode="REQUIRED"),
+        bigquery.SchemaField("source_url", "STRING", mode="REQUIRED"),
+        bigquery.SchemaField("title", "STRING", mode="NULLABLE"),
+        bigquery.SchemaField("text", "STRING", mode="NULLABLE"),
+        bigquery.SchemaField("source_type", "STRING", mode="NULLABLE"),
+        bigquery.SchemaField("region", "STRING", mode="NULLABLE"),
+        bigquery.SchemaField("published_at", "STRING", mode="NULLABLE"),
+        bigquery.SchemaField("published_ts", "INT64", mode="NULLABLE"),
+        bigquery.SchemaField("source_feed", "STRING", mode="NULLABLE"),
+        bigquery.SchemaField("job_id", "STRING", mode="REQUIRED"),
+        bigquery.SchemaField("ingested_at", "TIMESTAMP", mode="REQUIRED"),
+    ]
+    try:
+        client.get_table(table_ref)
+    except NotFound:
+        try:
+            client.create_table(bigquery.Table(table_ref, schema=schema))
+            log.info("[bigquery] auto-created table %s.%s", _BQ_DATASET, _BQ_TABLE)
+        except Exception as e:  # noqa: BLE001
+            log.warning("[bigquery] auto-create %s failed: %s", table_ref, e)
+            return False
+    except Exception as e:  # noqa: BLE001
+        log.warning("[bigquery] get_table %s failed: %s", table_ref, e)
+        return False
+
+    _bq_table_ready = True
+    return True
+
+
+def mirror_raw_to_bq(articles: list[dict], job_id: str) -> None:
+    """Mirror newly-ingested raw articles to BigQuery `raw_articles`.
+
+    No-op when USE_BIGQUERY is falsy/unset. Never raises — local JSON is the
+    dedup truth, a BQ hiccup must not kill the pipeline. Auto-creates the
+    target table on first call per process.
+    """
+    if not _USE_BIGQUERY:
+        return
+    if not articles:
+        return
+
+    client = _get_bq_client()
+    if client is None:
+        return
+
+    if not _ensure_raw_articles_table(client):
+        return
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rows: list[dict[str, Any]] = []
+    for a in articles:
+        rows.append(
+            {
+                "article_id": a.get("article_id"),
+                "source_url": a.get("source_url"),
+                "title": a.get("title"),
+                "text": a.get("text"),
+                "source_type": a.get("source_type"),
+                "region": a.get("region"),
+                "published_at": a.get("published_at"),
+                "published_ts": a.get("published_ts"),
+                "source_feed": a.get("source_feed"),
+                "job_id": job_id,
+                "ingested_at": now_iso,
+            }
+        )
+
+    table_ref = f"{client.project}.{_BQ_DATASET}.{_BQ_TABLE}"
+    try:
+        errors = client.insert_rows_json(table_ref, rows)
+    except Exception as e:  # noqa: BLE001
+        log.warning("[bigquery] insert_rows_json raised for job %s: %s", job_id, e)
+        return
+
+    if errors:
+        for err in errors:
+            idx = err.get("index") if isinstance(err, dict) else None
+            detail = err.get("errors") if isinstance(err, dict) else err
+            log.warning("[bigquery] row %s insert error: %s", idx, detail)
+        return
+
+    log.info(
+        "[bigquery] inserted %d rows into %s.%s for job %s",
+        len(rows), _BQ_DATASET, _BQ_TABLE, job_id,
+    )
 
 
 def ingest_all_sources(seen_ids: set[str] | None = None) -> tuple[list[RawDoc], dict[str, dict[str, int]]]:
