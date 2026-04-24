@@ -130,18 +130,18 @@ No FastAPI. No dedup. No rerank. No dynamic sections yet (flat digest OK if the 
 **Deliverable:** `scripts/run_pipeline.py` (single file) and a `safe_llm_json(raw, key, expected_len)` helper living in `pipeline/_util.py`.
 
 **Checklist:**
-- [ ] Create Pinecone index `aim-chunks` (`dim=1536`, `cosine`) if not already live
-- [ ] Hardcode both Aims from the § above (even though Phase 0 only runs one, having both defined early means Phase 1 can demo the contrast without retrofitting)
-- [ ] Hardcode the 10 RSS sources from the § above, smoke-tested
-- [ ] `RSSConnector` with `list_new_items()` + `fetch()` — registered in a `REGISTRY` dict even though it's the only live one, so the extensibility pattern is present from day one
-- [ ] For each article URL: `trafilatura.fetch_url` + `.extract`; skip if <200 chars; fall back to RSS `entry.summary` on empty
-- [ ] Chunk with `RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)`, title prepended
-- [ ] Embed with `text-embedding-3-small` (batch ≤100)
-- [ ] Upsert to Pinecone: `id = uuid4()`, `metadata = {article_id, source_url, title, text[:1000], source_type, region}` — `region` + `source_type` mandatory on every chunk
-- [ ] Retrieve: `build_query_text(aim)` → embed → `index.query(top_k=20, filter={"region": {"$in": [*aim.regions, "Global"]}})`
-- [ ] Generate: one `gpt-4o-mini` call with `response_format={"type":"json_object"}`, `temperature=0.3`, system "senior market intelligence analyst producing a personalised digest", user prompt embeds the full structured Aim + top-20 chunks, returns `{headline, date_range, sections:[{title, items:[{title, body, source_urls, source_count, item_type, relevance_score}]}]}`
-- [ ] Log funnel metrics at every stage: `INGESTED=N, EXTRACTED=N, CHUNKED=N, EMBEDDED=N, UPSERTED=N, RETRIEVED=N`
-- [ ] `print(json.dumps(digest, indent=2))`
+- [x] Create Pinecone index `aim-chunks` (`dim=1536`, `cosine`) if not already live
+- [x] Hardcode both Aims from the § above (even though Phase 0 only runs one, having both defined early means Phase 1 can demo the contrast without retrofitting)
+- [x] Hardcode the 10 RSS sources from the § above, smoke-tested
+- [x] `RSSConnector` with `list_new_items()` + `fetch()` — registered in a `REGISTRY` dict even though it's the only live one, so the extensibility pattern is present from day one
+- [x] For each article URL: `trafilatura.fetch_url` + `.extract`; skip if <200 chars; fall back to RSS `entry.summary` on empty
+- [x] Chunk with `RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)`, title prepended
+- [x] Embed with `text-embedding-3-small` (batch ≤100)
+- [x] Upsert to Pinecone: `id = uuid4()`, `metadata = {article_id, source_url, source_feed, title, text[:1000], source_type, region}` — `region` + `source_type` mandatory on every chunk
+- [x] Retrieve: `build_query_text(aim)` → embed → `index.query(top_k=20, filter={"region": {"$in": [*aim.regions, "Global"]}})`
+- [x] Generate: one `gpt-4o-mini` call with `response_format={"type":"json_object"}`, `temperature=0.3`, system "senior market intelligence analyst producing a personalised digest", user prompt embeds the full structured Aim + top-20 chunks, returns `{headline, date_range, sections:[{title, items:[{title, body, source_urls, source_count, item_type, relevance_score}]}]}`
+- [x] Log funnel metrics at every stage: `INGESTED=N, EXTRACTED=N, CHUNKED=N, EMBEDDED=N, UPSERTED=N, RETRIEVED=N`
+- [x] `print(json.dumps(digest, indent=2))`
 
 **Done when:** `uv run python scripts/run_pipeline.py` prints a valid Digest JSON whose `sections[*].items[*].source_urls[*]` are real, ingested article URLs.
 

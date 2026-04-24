@@ -269,7 +269,8 @@ def chunk_articles(docs: list[RawDoc]) -> list[dict[str, Any]]:
                 {
                     "chunk_id": uuid.uuid4().hex,
                     "article_id": doc.article_id,
-                    "source_url": doc.source_url,
+                    "source_url": doc.source_url,      # article URL — the real page we extracted
+                    "source_feed": doc.source_feed,    # feed URL we polled — provenance for debugging + per-feed rerank
                     "title": doc.title,
                     "text": part,
                     "source_type": doc.source_type,
@@ -301,6 +302,7 @@ def upsert_chunks(index, chunks: list[dict[str, Any]], embeddings: list[list[flo
                 "metadata": {
                     "article_id": chunk["article_id"],
                     "source_url": chunk["source_url"],
+                    "source_feed": chunk.get("source_feed", ""),
                     "title": chunk["title"],
                     "text": chunk["text"][:1000],
                     "source_type": chunk["source_type"],
@@ -352,6 +354,7 @@ def retrieve_relevant_chunks(
                 "score": match["score"],
                 "article_id": md.get("article_id"),
                 "source_url": md.get("source_url"),
+                "source_feed": md.get("source_feed", ""),
                 "title": md.get("title"),
                 "text": md.get("text"),
                 "source_type": md.get("source_type"),
