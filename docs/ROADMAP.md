@@ -137,7 +137,7 @@ No FastAPI. No dedup. No rerank. No dynamic sections yet (flat digest OK if the 
 - [x] For each article URL: `trafilatura.fetch_url` + `.extract`; skip if <200 chars; fall back to RSS `entry.summary` on empty
 - [x] Chunk with `RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)`, title prepended
 - [x] Embed with `text-embedding-3-small` (batch ≤100)
-- [x] Upsert to Pinecone: `id = uuid4()`, `metadata = {article_id, source_url, source_feed, title, text[:1000], source_type, region}` — `region` + `source_type` mandatory on every chunk
+- [x] Upsert to Pinecone: `id = uuid4()`, `metadata = {article_id, source_url, source_feed, title, text[:1000], source_type, region, published_ts, chunk_index}` — `region` + `source_type` mandatory on every chunk; `published_ts` is epoch-seconds (fallback to ingest-time) so Phase 4's recency filter has a number on the vector
 - [x] Retrieve: `build_query_text(aim)` → embed → `index.query(top_k=20, filter={"region": {"$in": [*aim.regions, "Global"]}})`
 - [x] Generate: one `gpt-4o-mini` call with `response_format={"type":"json_object"}`, `temperature=0.3`, system "senior market intelligence analyst producing a personalised digest", user prompt embeds the full structured Aim + top-20 chunks, returns `{headline, date_range, sections:[{title, items:[{title, body, source_urls, source_count, item_type, relevance_score}]}]}`
 - [x] Log funnel metrics at every stage: `INGESTED=N, EXTRACTED=N, CHUNKED=N, EMBEDDED=N, UPSERTED=N, RETRIEVED=N`

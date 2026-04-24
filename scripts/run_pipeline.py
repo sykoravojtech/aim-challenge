@@ -14,11 +14,13 @@ No FastAPI, no dedup, no rerank. Every stage logs a funnel line.
 """
 from __future__ import annotations
 
+import calendar
 import hashlib
 import json
 import logging
 import os
 import sys
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -126,8 +128,25 @@ class RawDoc:
     text: str
     source_type: str
     region: str
-    published_at: str | None = None
+    published_at: str | None = None      # RSS-reported human-readable date (for data/raw/ debug)
+    published_ts: int = 0                # epoch seconds — filter-side handle for Phase 4 recency
     source_feed: str = ""
+
+
+def _published_ts(entry: Any) -> int:
+    """Epoch seconds from an RSS entry's pubDate. Feedparser normalises
+    RFC822/Atom dates into time.struct_time (UTC); calendar.timegm converts
+    that to epoch. Falls back to ingest-time so every chunk has a number the
+    recency filter can compare against (safer than omitting — an undated chunk
+    should age from when we saw it, not sort to the top forever)."""
+    for key in ("published_parsed", "updated_parsed"):
+        st = entry.get(key)
+        if st:
+            try:
+                return int(calendar.timegm(st))
+            except (TypeError, ValueError, OverflowError):
+                continue
+    return int(time.time())
 
 
 class BaseConnector(Protocol):
@@ -175,6 +194,7 @@ class RSSConnector:
                 "title": entry.get("title", "").strip(),
                 "summary": entry.get("summary", "") or entry.get("description", ""),
                 "published": entry.get("published") or entry.get("updated"),
+                "published_ts": _published_ts(entry),
             }
 
     def fetch(self, ref: dict[str, Any]) -> RawDoc | None:
@@ -206,6 +226,7 @@ class RSSConnector:
             source_type=self.source_type,
             region=self.region,
             published_at=ref.get("published"),
+            published_ts=ref.get("published_ts") or int(time.time()),
             source_feed=self.url,
         )
 
@@ -275,6 +296,7 @@ def chunk_articles(docs: list[RawDoc]) -> list[dict[str, Any]]:
                     "text": part,
                     "source_type": doc.source_type,
                     "region": doc.region,
+                    "published_ts": doc.published_ts,  # epoch seconds — Phase 4 recency filter handle
                     "chunk_index": i,
                     "total_chunks": len(parts),
                 }
@@ -307,6 +329,7 @@ def upsert_chunks(index, chunks: list[dict[str, Any]], embeddings: list[list[flo
                     "text": chunk["text"][:1000],
                     "source_type": chunk["source_type"],
                     "region": chunk["region"],
+                    "published_ts": int(chunk.get("published_ts") or 0),
                     "chunk_index": chunk["chunk_index"],
                 },
             }
@@ -359,6 +382,7 @@ def retrieve_relevant_chunks(
                 "text": md.get("text"),
                 "source_type": md.get("source_type"),
                 "region": md.get("region"),
+                "published_ts": md.get("published_ts"),
             }
         )
     return out

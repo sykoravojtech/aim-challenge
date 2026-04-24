@@ -3,11 +3,11 @@
   "date_range": "Apr 24, 2026 (single-day run)",
   "sections": [
     {
-      "title": "Recent Fundraising Activities",
+      "title": "Funding Announcements",
       "items": [
         {
           "title": "Polish-Based GRAI Secures €7.65M Seed Funding",
-          "body": "GRAI, a Polish startup focused on building an AI-powered music remix platform, has successfully secured €7.65 million in seed funding. This investment will help the company enhance its technology and expand its market reach.",
+          "body": "Polish-based GRAI has successfully secured €7.65 million in seed funding to develop its AI-powered music remix platform. This funding is expected to enhance its technological capabilities and expand its market reach.",
           "source_urls": [
             "https://therecursive.com/grai-secures-e7-65m-seed-funding-to-build-ai-powered-music-remix-platform/"
           ],
@@ -17,7 +17,7 @@
         },
         {
           "title": "Polish Warsaw Equity Group Leads €5M Series A",
-          "body": "The Polish Warsaw Equity Group has led a €5 million Series A funding round alongside Porsche Ventures, aimed at supporting innovative startups in the electric vehicle charging sector.",
+          "body": "The Polish Warsaw Equity Group has led a €5 million Series A investment alongside Porsche Ventures, aimed at supporting innovative startups in the EV charging sector.",
           "source_urls": [
             "https://therecursive.com/warsaw-equity-group-porsche-ventures-charge-investment-ev-charging/"
           ],
@@ -31,13 +31,13 @@
       "title": "Startup Internationalisation Efforts",
       "items": [
         {
-          "title": "Slovenia's Strategic Approach to Startup Internationalisation",
-          "body": "Slovenia is rethinking its approach to startup internationalisation by organizing national delegations to key events, enhancing visibility and access to investors. This initiative aims to foster a well-connected ecosystem for founders.",
+          "title": "Slovenia's New Strategy for Startup Internationalisation",
+          "body": "Slovenia is implementing a new national startup strategy to enhance internationalisation, aiming to double the number of startups per capita and significantly increase venture capital investment. This initiative includes coordinated national delegations to key events.",
           "source_urls": [
             "https://therecursive.com/slovenia-startup-ecosystem-internationalisation-viennaup-2026/"
           ],
           "source_count": 1,
-          "item_type": "news",
+          "item_type": "announcement",
           "relevance_score": 9
         }
       ]
@@ -46,8 +46,8 @@
       "title": "AI and Technology Events",
       "items": [
         {
-          "title": "CzechCrunch Future Event Highlights",
-          "body": "The CzechCrunch Future event attracted over 900 attendees, showcasing the transformative impact of AI technologies on various sectors. The event featured workshops and discussions on the future of technology and AI applications.",
+          "title": "CzechCrunch Future Event Highlights AI Innovations",
+          "body": "The CzechCrunch Future event showcased over 900 attendees discussing the transformative impact of AI on personal and professional lives. Key industry leaders presented innovations and future trends in technology.",
           "source_urls": [
             "https://cc.cz/technologie-a-umela-inteligence-zmeni-svet-na-czechcrunch-future-jsme-nahledli-do-budoucnosti/"
           ],
@@ -67,7 +67,7 @@
     "sections": 3,
     "items": 4,
     "aim_id": "cee-founder-media",
-    "generated_at": "2026-04-24T07:46:41.431305+00:00"
+    "generated_at": "2026-04-24T07:54:02.979081+00:00"
   },
   "_source_stats": {
     "https://techcrunch.com/feed/": {
