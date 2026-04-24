@@ -32,6 +32,16 @@ Phase 2 funnels (`data/compare/phase2_dedup.json`, CEE Aim, two back-to-back run
 - **Run 1, `mode=force`** (Tier 3 semantic dedup now gates upsert): `INGESTED=78 → CHUNKED=623 → EMBEDDED=623 → UPSERTED=614 (SEMANTIC_DUPS=9) → RETRIEVED=20 → SECTIONS=3 / ITEMS=4` in ~124 s. The 9 Tier-3 catches were mostly arxiv-abstract boilerplate, not cross-outlet rewrites — see [LESSONS L4](LESSONS.md#l4-tier-3-semantic-dedup-catches-arxiv-more-than-news).
 - **Run 2, `mode=incremental`** (Tier 1 URL md5 on top of run 1's seen-set): `INGESTED=1 (skipped_seen=77) → CHUNKED=4 → UPSERTED=4 → RETRIEVED=20 → SECTIONS=3 / ITEMS=4` in ~13 s. **The demo line: 77/78 articles skipped by Tier 1, Digest still emits in 13 s.** The one new ingest was a Forbes.cz entry published between the two runs — proof that `incremental` tracks live feeds, not a failure.
 
+### How the two dedup tiers actually flow (demo narration)
+
+Say this out loud when pointing at the two `data/compare/phase2_dedup.json` funnels:
+
+**Tier 1 — URL dedup, before scraping.** In `pipeline/ingestion.py::ingest_all_sources`, after listing RSS entries we hash each URL (`md5(url)`) and check it against `seen_ids` — which `main.py` builds from `storage.get_seen_article_ids()`, a union of all `article_id`s across every past `data/raw/*.json`. If the hash is already there → **skip the article entirely, don't even call trafilatura.** Only URLs we've never seen get scraped, extracted, and chunked. That's where the "77/78 skipped_seen" number comes from in run 2.
+
+**Tier 3 — semantic dedup, before storing.** New URLs get chunked + embedded as normal. Then in `pipeline/vector_store.py::upsert_chunks`, before upserting each chunk to Pinecone, we run a `top_k=1` query with that chunk's embedding, **filtered to `article_id $ne` this chunk's article_id**. If the top match (from a *different* article) has cosine ≥ 0.93 → skip the upsert, log `semantic_dup of {id}`, bump the `semantic_dups` counter. Chunks that are too similar to something already in Pinecone never get stored. That's the "9 semantic_dups / 623" in run 1.
+
+**Full flow end-to-end:** new URL → Tier 1 hash check → scrape → chunk → embed → Tier 3 Pinecone near-neighbour check → only upsert if it's genuinely new content. Tier 1 is the cheap precheck that saves the trafilatura+embed cost; Tier 3 is the expensive-but-free-because-we-already-have-the-embedding precheck that protects against semantic near-duplicates Tier 1 can't see.
+
 | Verb | Module | Status | One-liner for demo |
 |---|---|---|---|
 | ingest | `pipeline/ingestion.py::ingest_all_sources` | ✅ Phase 0–2 | 10 RSS feeds behind a `RSSConnector` in a `REGISTRY` dict — adding a Mexican-state-institutions source is one `@register("mexico_gov")` line, not a pipeline rewrite. **Phase 2**: tenacity retries on `_parse_feed` + `_fetch_url` (3 attempts, 1→8 s expo), per-source + per-article try/except. One flaky feed does not kill the run; one bad article does not kill the source. |
