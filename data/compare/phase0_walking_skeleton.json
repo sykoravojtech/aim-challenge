@@ -1,13 +1,13 @@
 {
-  "headline": "Czech & CEE Startup Ecosystem Insights",
+  "headline": "Czech & CEE Founder Media Digest",
   "date_range": "Apr 24, 2026 (single-day run)",
   "sections": [
     {
-      "title": "Funding Announcements",
+      "title": "Recent Fundraising Activities",
       "items": [
         {
           "title": "Polish-Based GRAI Secures €7.65M Seed Funding",
-          "body": "GRAI, a Polish startup focused on AI-powered music remixing, has successfully secured €7.65 million in seed funding to enhance its platform. This funding marks a significant step in the growth of AI-driven solutions in the CEE region.",
+          "body": "GRAI, a Polish startup focused on building an AI-powered music remix platform, has successfully secured €7.65 million in seed funding. This investment will help the company enhance its technology and expand its market reach.",
           "source_urls": [
             "https://therecursive.com/grai-secures-e7-65m-seed-funding-to-build-ai-powered-music-remix-platform/"
           ],
@@ -17,23 +17,13 @@
         },
         {
           "title": "Polish Warsaw Equity Group Leads €5M Series A",
-          "body": "The Polish Warsaw Equity Group has led a €5 million Series A investment alongside Porsche Ventures, marking a significant development in the EV charging sector within the CEE region.",
+          "body": "The Polish Warsaw Equity Group has led a €5 million Series A funding round alongside Porsche Ventures, aimed at supporting innovative startups in the electric vehicle charging sector.",
           "source_urls": [
             "https://therecursive.com/warsaw-equity-group-porsche-ventures-charge-investment-ev-charging/"
           ],
           "source_count": 1,
           "item_type": "investment",
           "relevance_score": 7
-        },
-        {
-          "title": "Outcraft AI Raises €2 Million in Pre-Seed Funding",
-          "body": "Vilnius-based Outcraft AI has raised €2 million in pre-seed funding to develop its autonomous revenue agents that enhance customer engagement across various platforms.",
-          "source_urls": [
-            "https://therecursive.com/cee-startup-tech-weekly-two-polish-startups-raise-fresh-funding/"
-          ],
-          "source_count": 1,
-          "item_type": "investment",
-          "relevance_score": 6
         }
       ]
     },
@@ -42,62 +32,42 @@
       "items": [
         {
           "title": "Slovenia's Strategic Approach to Startup Internationalisation",
-          "body": "Slovenia is rethinking its approach to startup internationalisation by organizing national delegations to key events, enhancing visibility and access to international capital for local startups.",
+          "body": "Slovenia is rethinking its approach to startup internationalisation by organizing national delegations to key events, enhancing visibility and access to investors. This initiative aims to foster a well-connected ecosystem for founders.",
           "source_urls": [
             "https://therecursive.com/slovenia-startup-ecosystem-internationalisation-viennaup-2026/"
           ],
           "source_count": 1,
           "item_type": "news",
           "relevance_score": 9
-        },
+        }
+      ]
+    },
+    {
+      "title": "AI and Technology Events",
+      "items": [
         {
-          "title": "SPIRIT Slovenia's Delegation to ViennaUP 2026",
-          "body": "SPIRIT Slovenia is leading a delegation of startups and investors to ViennaUP 2026, aiming to strengthen connections and opportunities for Slovenian startups in the international market.",
+          "title": "CzechCrunch Future Event Highlights",
+          "body": "The CzechCrunch Future event attracted over 900 attendees, showcasing the transformative impact of AI technologies on various sectors. The event featured workshops and discussions on the future of technology and AI applications.",
           "source_urls": [
-            "https://therecursive.com/slovenia-startup-ecosystem-internationalisation-viennaup-2026/"
+            "https://cc.cz/technologie-a-umela-inteligence-zmeni-svet-na-czechcrunch-future-jsme-nahledli-do-budoucnosti/"
           ],
           "source_count": 1,
           "item_type": "news",
           "relevance_score": 8
         }
       ]
-    },
-    {
-      "title": "Technological Developments",
-      "items": [
-        {
-          "title": "National Center for Artificial Intelligence Opens in Czechia",
-          "body": "The National Center for Artificial Intelligence has been inaugurated in Czechia, aiming to promote cutting-edge research and innovation in AI applications across various sectors.",
-          "source_urls": [
-            "https://www.lupa.cz/aktuality/pechoucek-na-cvut-otevrel-narodni-centrum-umele-inteligence-ma-ai-zabydlet-ve-firmach-i-verejne-sprave/?utm_source=rss&utm_medium=text&utm_campaign=rss"
-          ],
-          "source_count": 1,
-          "item_type": "news",
-          "relevance_score": 7
-        },
-        {
-          "title": "CzechCrunch Future Event Highlights AI Innovations",
-          "body": "The CzechCrunch Future event showcased various AI innovations and their impact on personal and professional lives, attracting over 900 attendees interested in the future of technology.",
-          "source_urls": [
-            "https://cc.cz/technologie-a-umela-inteligence-zmeni-svet-na-czechcrunch-future-jsme-nahledli-do-budoucnosti/"
-          ],
-          "source_count": 1,
-          "item_type": "news",
-          "relevance_score": 6
-        }
-      ]
     }
   ],
   "_funnel": {
-    "ingested": 77,
-    "chunked": 582,
-    "embedded": 582,
-    "upserted": 582,
+    "ingested": 78,
+    "chunked": 625,
+    "embedded": 625,
+    "upserted": 625,
     "retrieved": 20,
     "sections": 3,
-    "items": 7,
+    "items": 4,
     "aim_id": "cee-founder-media",
-    "generated_at": "2026-04-24T07:31:54.515416+00:00"
+    "generated_at": "2026-04-24T07:46:41.431305+00:00"
   },
   "_source_stats": {
     "https://techcrunch.com/feed/": {
@@ -107,8 +77,8 @@
     },
     "https://news.ycombinator.com/rss": {
       "listed": 8,
-      "extracted": 6,
-      "used": 6
+      "extracted": 7,
+      "used": 7
     },
     "https://arxiv.org/rss/cs.AI": {
       "listed": 8,
