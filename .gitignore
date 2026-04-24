@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets and local config
+.env
+credentials.json
+*.pem
+
+# Local data — raw/aims/digests are runtime artefacts. data/compare/ is
+# intentionally NOT listed: phase before/after snapshots are committed
+# as interview exhibits.
+data/raw/
+data/aims/
+data/digests/
+
+# Scratch / reference material
+tmp/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
