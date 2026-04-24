@@ -94,10 +94,61 @@ Seeded from [CLAUDE.md § Scope](../CLAUDE.md#scope--what-were-building-and-what
 
 - **Video + audio sources (YouTube, podcasts, Whisper)** — adds 1h transcription latency for zero marginal architectural signal. Would unstub with a week: `PodcastConnector` + `yt-dlp` + Whisper batch job.
 - **Pub/Sub fan-out** — identical semantics to `BackgroundTasks` at this scale, costs 2h of infra. Verbalise the pattern; don't run it.
-- **Firestore / BigQuery / VertexAI / Cloud Run** — Phase 5 conditional. Local JSON + Pinecone + OpenAI is faster to green. Swap plan is a single file each (`storage.py`, `embedding.py`).
+- **VertexAI embeddings** — cut from Phase 5. `text-embedding-004` at `dim=768` would force a Pinecone index recreation; cost of reindex dominates the "GCP-native embeddings" talking point. `pipeline/embedding.py` is a one-file swap if it ever matters. Cloud Run calls OpenAI fine.
+- **Typed digest items** (per-`item_type` structured fields like `quote`+`attribution`, `entity`+`amount`) — cut from Phase 5. Product-shape work, not infra; doesn't move the "runs on GCP" deliverable. Live Aim app does this — it's a named "what's next" item below.
+- **Cloud Scheduler / cron-driven digests** — out of scope. Digest trigger stays manual via `POST /aim/{id}/digest?mode=force`. Demo line: *"Scheduling is a 5-line Cloud Scheduler → Cloud Run HTTP target when it matters; orthogonal to the pipeline architecture."*
+- **More source feeds** — not the point. Extendability is shown by the `@register` connector registry, not by adding RSS URLs. ~10 live feeds + 5 registered stubs (Reddit/X/LinkedIn/YouTube/Podcast) is the shape.
 - **Auth** — `user_id` is trust-the-client. See [D15](DECISIONS.md#d15-auth-is-out-of-scope-user_id-is-trust-the-client).
 
 _Append new cuts below as they happen._
+
+---
+
+## 4b. GCP deployment — services, settings, and why
+
+**Phase 5 scaffold. The Phase 5 agent fills the `<FILL>` placeholders on successful deploy; everything else here is committed state.** The HoE explicitly asked for this — expect Q&A to probe every row of the table below.
+
+**One-paragraph architecture blurb** (for the "walk me through your GCP setup" opener):
+
+> *"Cloud Run serves the FastAPI app and the static frontend as a single container. Firestore holds aims and digests (swapped in behind `pipeline/storage.py` behind `USE_FIRESTORE=1`). BigQuery's `aim_pipeline.raw_articles` table gets every ingested article for analytical SQL queries. GCS mirrors the raw JSON per-job for reprocessing. Secrets — OpenAI and Pinecone keys — live in Secret Manager, mounted as env vars by Cloud Run, never baked into the image. The runtime service account has least-privilege IAM: Firestore User + BigQuery Data Editor/Job User + Storage Object Admin + Secret Manager Secret Accessor, nothing else."*
+
+**Services wired (all region `europe-west3` unless noted):**
+
+| Service | Resource | Purpose | Q&A answer |
+|---|---|---|---|
+| **Cloud Run** | service `aim` | Hosts FastAPI (API + static frontend), min-instances=0, max=3 | *"Stateless container, scales to zero, one `gcloud run deploy` command redeploys. Frontend and API are one service — FastAPI `mount('/', StaticFiles(...))` at `main.py:163`."* Deployed URL: `<FILL by Phase 5 agent>` |
+| **Firestore** | database `(default)`, Native mode | Aims + digests storage, replaces `data/aims/*.json` + `data/digests/*.json` on Cloud Run | *"Native mode, single region. Dual-write behind `USE_FIRESTORE` flag during migration — local JSON stays as pre-deploy dry-run substrate. Firestore was the right pick over Cloud SQL because we have document-shaped data (Aim and Digest are Pydantic models), no joins, and it has an always-free tier at 1 GiB."* |
+| **BigQuery** | dataset `aim_pipeline`, table `raw_articles` | Analytical store for every ingested article | *"Demo query: `SELECT source_type, region, COUNT(*) FROM raw_articles WHERE DATE(ingested_at) = CURRENT_DATE() GROUP BY 1,2` — per-source coverage this week. Local `data/raw/*.json` stays as dedup truth; BigQuery is the read-path for analytics, not the write-path for the pipeline."* |
+| **Cloud Storage** | bucket `aim-challenge-raw-494220`, **region `us-central1`** | Raw-article JSON archive, `gs://.../raw/{date}/{job_id}.json` | *"Bucket is in `us-central1` deliberately — GCS always-free 5 GB tier is only in the three US regions. No cross-region read path exists (this bucket is write-only from ingest, never read by BigQuery or Firestore), so colocation cost is zero. Bronze layer for reprocessing — if we change extraction logic tomorrow, we can replay from raw."* |
+| **Secret Manager** | `openai-api-key`, `pinecone-api-key` | Runtime secret injection into Cloud Run | *"Never bake secrets into the image. Cloud Run `--set-secrets=OPENAI_API_KEY=openai-api-key:latest,PINECONE_API_KEY=pinecone-api-key:latest` mounts them as env vars at container start. SA has per-secret `Secret Accessor`, not project-wide."* |
+| **Artifact Registry** | Docker repo `aim-images` | Container image store for Cloud Run | *"`europe-west3-docker.pkg.dev/aim-challenge-494220/aim-images/aim:latest` — `gcloud builds submit` pushes, Cloud Run pulls. Image size: `<FILL>`."* |
+| **Cloud Build** | (implicit, triggered by `gcloud run deploy --source .` or `gcloud builds submit`) | Container build from `Dockerfile` | *"Free tier is 120 build-minutes/day, one deploy ≈ 2 min. Not pinned to a trigger — manual deploy is fine at one-day-challenge scale."* |
+| **IAM runtime SA** | `aim-pipeline-sa@aim-challenge-494220.iam.gserviceaccount.com` | Cloud Run runtime identity, also used by local code via `credentials.json` | *"Six roles: Cloud Datastore User (covers Firestore Native — confusingly named), BigQuery Data Editor, BigQuery Job User, Storage Object Admin, Secret Manager Secret Accessor, Vertex AI User (unused, legacy from earlier scope). Least-privilege across the whole build."* |
+
+**Settings worth naming aloud in Q&A:**
+
+- **Cloud Run `--min-instances=0`.** Cold starts are the demo risk, but min=1 would bill continuously — free tier demands 0. Keep `uvicorn --port 4444` warm locally as fallback if the Cloud Run URL ever cold-starts mid-demo.
+- **`GOOGLE_APPLICATION_CREDENTIALS` is NOT set in the container.** Cloud Run uses the runtime SA via Application Default Credentials. The `credentials.json` at repo root is local-dev only, gitignored.
+- **`USE_FIRESTORE=1` in Cloud Run, `USE_FIRESTORE=0` locally** for pre-deploy dry-runs. `pipeline/storage.py` branches on this flag. Local fallback never breaks.
+- **GCS bucket public access prevention: enforced on.** Bronze layer is internal-only; no web-hosting use case.
+- **No Object Versioning, no Soft Delete on the bucket.** Both would count against the 5 GB free tier.
+- **No Container Scanning on Artifact Registry.** Per-scan billing, not free tier.
+
+**Funnel metrics from the Cloud Run deployment** (run once post-deploy, paste here):
+
+```
+<FILL by Phase 5 agent after first successful end-to-end digest via Cloud Run URL>
+```
+
+**"What about [service we don't use]?" cheat sheet:**
+
+- *VertexAI embeddings* → cut, reasoning in § 4 above.
+- *Cloud Scheduler* → cut, reasoning in § 4 above.
+- *Pub/Sub* → verbalised in scalability commentary ([CLAUDE.md § Brief's four suggestions](../CLAUDE.md)), not wired. `BackgroundTasks` has identical semantics at single-instance scale; Pub/Sub earns its pay across multiple Cloud Run instances fanning out per-stage. ~60 LOC + topic/sub config when we need it.
+- *Cloud Tasks* → verbalised for per-source rate limiting (mentioned in the scalability bullet). Not wired because `tenacity` + per-source try/except is enough at 10-feed scale.
+- *Cloud SQL / AlloyDB* → not a fit — document shape (Aim, Digest) matches Firestore; no joins; no transactional writes outside a single Aim document.
+- *Memorystore (Redis)* → not needed; Pinecone is already the retrieval-layer cache, Firestore document reads are fast and within free-tier quota.
+- *Logging / Monitoring / Error Reporting* → Cloud Run emits stdout to Cloud Logging automatically. Not set up alerts or dashboards — demo scale, not prod.
 
 ---
 
