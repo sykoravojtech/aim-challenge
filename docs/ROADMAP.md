@@ -388,7 +388,7 @@ Tick as each lands:
 - [x] Phase 2 — Dedup (Tier 1 + Tier 3) + retries
 - [x] Phase 3 — Frontend
 - [x] Phase 4 — Rerank + MMR + compare tooling
-- [ ] Phase 5 console pre-work (APIs, Firestore db, BQ dataset, GCS bucket, Artifact Registry repo, Secret Manager, runtime SA)
+- [x] Phase 5 console pre-work (APIs, Firestore db `(default)`, BQ dataset `aim_pipeline` in `europe-west3`, GCS bucket `aim-challenge-raw-494220` in `us-central1`, Artifact Registry repo `aim-images` in `europe-west3`, Secret Manager `openai-api-key` + `pinecone-api-key`, runtime SA `aim-pipeline-sa@aim-challenge-494220.iam.gserviceaccount.com` with 6 roles incl. Secret Manager Secret Accessor)
 - [ ] Phase 5a — Firestore swap (`storage.py`)
 - [ ] Phase 5b — BigQuery `raw_articles` (`ingestion.py`)
 - [ ] Phase 5e — GCS bronze
