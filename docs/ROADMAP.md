@@ -233,15 +233,16 @@ Main session reviews diffs, wires `seen_ids` into `ingest_all_sources`, runs sec
 Tokens in [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md). Vanilla HTML/CSS/JS, no framework, no build step.
 
 **Checklist:**
-- [ ] `static/index.html` — three regions: Aim form, Aims list (row = title + summary bullets + entity/region/update chips + icon-button edit/delete + **Mode `<select>`** + Generate primary button), Digest view (headline + date_range + section cards with item cards + clickable source URL chips)
-- [ ] Pre-populate the two demo Aims on first load if none exist
-- [ ] `static/app.js` — `fetch` + 2 s poll loop on `GET /digest/{id}` + render. No framework.
-- [ ] `static/style.css` — use tokens from [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) (brand purple `#552CD9`, Inter, radius `0.5rem`). Inter via Google Fonts `<link>`.
-- [ ] Icon-only edit/delete (36×36 Lucide pen+trash SVG inline, `currentColor`, hover reveals semantic colour); text primary for Generate. Rows with ≥3 actions read noisy when all three are text buttons — icon-only on utility actions fixes the hierarchy.
-- [ ] `app.mount("/", StaticFiles(directory="static", html=True), name="static")` **after** all API routes in `main.py`
-- [ ] Empty state ("Create your first Aim") and error state (red inline on digest failure)
+- [x] `static/index.html` — three regions: Aim form, Aims list (row = title + summary bullets + entity/region/update chips + icon-button edit/delete + **Mode `<select>`** + Generate primary button), Digest view (headline + date_range + section cards with item cards + clickable source URL chips)
+- [x] Pre-populate the two demo Aims on first load if none exist (already handled server-side by `_seed_demo_aims` startup hook in `main.py`)
+- [x] `static/app.js` — `fetch` + 2 s poll loop on `GET /digest/{id}` + render. No framework.
+- [x] `static/style.css` — use tokens from [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) (brand purple `#552CD9`, Inter, radius `0.5rem`). Inter via Google Fonts `<link>`.
+- [x] Icon-only edit/delete (36×36 Lucide pen+trash SVG inline via `<use href="#i-pen|#i-trash">` symbol defs, `currentColor`, hover reveals semantic red on delete); text primary for Generate.
+- [x] `app.mount("/", StaticFiles(directory=str(ROOT / "static"), html=True), name="static")` **after** all API routes in `main.py` (placed immediately after `/health`, before the BackgroundTask helpers, so API path patterns win on conflict)
+- [x] Empty state ("No Aims yet" / "No digest yet") and error state (`.alert--error` red inline on digest failure or fetch error)
+- [x] Per-row live status pill (gray queued · amber pulsing while running · green done · red failed) so multiple Aims can show their last-run state independently
 
-**Done when:** opening `http://localhost:4444` lets you create an Aim, pick a mode, click Generate, watch the Digest render — no curl involved.
+**Done when:** opening `http://localhost:4444` lets you create an Aim, pick a mode, click Generate, watch the Digest render — no curl involved. ✅ Verified end-to-end via Playwright: loaded `/`, switched mode dropdown to `cached` on the CEE Founders Aim, clicked Generate → row pill turned green ("cached · done in 14s") in ~12 s → digest header rendered with date_range/headline/funnel meta (`retrieved 20 · 3 sections · 5 items`) → 3 LLM-chosen sections ("Funding Announcements", "Startup Developments", "Insights on CEE's AI Landscape") with item_type badges, ★ relevance scores, and clickable hostname source chips.
 
 **Subagent fan-out:** mostly solo — frontend is one coherent look-and-feel iteration; splitting HTML/CSS/JS across subagents risks inconsistent spacing/naming. One useful fan-out at start:
 - **A → `static/style.css` scaffold**: emit CSS custom properties from [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) tokens (brand purple, Inter, radii, spacing scale) and base resets. Main session builds `index.html` + `app.js` against that palette.
@@ -357,7 +358,7 @@ Tick as each lands:
 - [x] Phase 0 — Walking skeleton
 - [x] Phase 1 — FastAPI + CRUD + three-mode trigger
 - [x] Phase 2 — Dedup (Tier 1 + Tier 3) + retries
-- [ ] Phase 3 — Frontend
+- [x] Phase 3 — Frontend
 - [ ] Phase 4 — Rerank + MMR + compare tooling
 - [ ] Phase 5a — Firestore swap
 - [ ] Phase 5b — BigQuery raw_articles

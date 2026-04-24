@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Response
+from fastapi.staticfiles import StaticFiles
 
 # Make first-party imports work regardless of cwd.
 ROOT = Path(__file__).resolve().parent
@@ -155,6 +156,11 @@ def get_digest_status(digest_id: str) -> dict[str, Any] | Digest:
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {"ok": True, "pinecone_index": os.environ.get("PINECONE_INDEX", "aim-chunks")}
+
+
+# Static frontend — mounted LAST so API routes win on path conflicts.
+# `html=True` makes `/` serve `static/index.html`.
+app.mount("/", StaticFiles(directory=str(ROOT / "static"), html=True), name="static")
 
 
 # ---------------------------------------------------------------------------
