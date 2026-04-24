@@ -27,6 +27,7 @@ data/evals/run_*.md
 
 # Scratch / reference material
 tmp/
+.playwright-mcp/
 
 # Editor / OS
 .DS_Store
