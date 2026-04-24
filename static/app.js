@@ -156,6 +156,10 @@ function renderAimRow(aim) {
       <button class="btn btn--primary" type="button" data-action="generate">Generate Digest</button>
       <span class="aim-row__status" data-role="status"></span>
     </div>
+    <details class="aim-row__history" data-role="history-wrap">
+      <summary>History</summary>
+      <div class="aim-history" data-role="history"><span class="empty-state">Click to load…</span></div>
+    </details>
   `;
   row.querySelector('[data-action="edit"]').addEventListener("click", () => openForm(aim));
   row.querySelector('[data-action="delete"]').addEventListener("click", () => deleteAim(aim));
@@ -163,8 +167,67 @@ function renderAimRow(aim) {
     const mode = row.querySelector('[data-action="mode"]').value;
     generateDigest(aim, mode, row);
   });
+  const details = row.querySelector('[data-role="history-wrap"]');
+  details.addEventListener("toggle", () => {
+    if (details.open) loadHistory(aim, row);
+  });
   refreshRowStatus(row, aim.aim_id);
   return row;
+}
+
+async function loadHistory(aim, row) {
+  const host = row.querySelector('[data-role="history"]');
+  host.innerHTML = `<span class="empty-state"><span class="spinner"></span>Loading history…</span>`;
+  let items = [];
+  try {
+    const res = await fetch(`/aim/${encodeURIComponent(aim.aim_id)}/digests`);
+    if (!res.ok) throw new Error(`GET /aim/.../digests → ${res.status}`);
+    items = await res.json();
+  } catch (err) {
+    host.innerHTML = `<div class="alert alert--error">Failed to load history: ${esc(err.message)}</div>`;
+    return;
+  }
+  if (!items.length) {
+    host.innerHTML = `<span class="empty-state">No past digests yet.</span>`;
+    return;
+  }
+  host.innerHTML = items.map((d) => {
+    const when = d.generated_at ? new Date(d.generated_at).toLocaleString() : "(unknown)";
+    const meta = [
+      d.mode ? `<code>${esc(d.mode)}</code>` : "",
+      d.items != null ? `${d.items} items` : "",
+      d.sections != null ? `${d.sections} sections` : "",
+      d.date_range ? esc(d.date_range) : "",
+    ].filter(Boolean).join(" · ");
+    return `
+      <button class="aim-history__item" type="button" data-digest-id="${esc(d.digest_id)}">
+        <div class="aim-history__head">
+          <span class="aim-history__when">${esc(when)}</span>
+          <span class="aim-history__headline">${esc(d.headline || "(no headline)")}</span>
+        </div>
+        <div class="aim-history__meta">${meta}</div>
+      </button>`;
+  }).join("");
+  host.querySelectorAll("[data-digest-id]").forEach((btn) => {
+    btn.addEventListener("click", () => openHistoryDigest(aim, btn.dataset.digestId));
+  });
+}
+
+async function openHistoryDigest(aim, digestId) {
+  activeDigestId = digestId;  // stops any in-flight poll from clobbering the view
+  digestMetaLine.textContent = `${aim.title} — history`;
+  digestView.innerHTML = `
+    <div class="card" style="display:flex; align-items:center; gap:12px;">
+      <span class="spinner"></span><span>Loading digest…</span>
+    </div>`;
+  try {
+    const res = await fetch(`/digest/${encodeURIComponent(digestId)}`);
+    if (!res.ok) throw new Error(`GET /digest → ${res.status}`);
+    const d = await res.json();
+    renderDigest(aim, d, d.mode || "history");
+  } catch (err) {
+    digestView.innerHTML = `<div class="alert alert--error">Failed to load digest: ${esc(err.message)}</div>`;
+  }
 }
 
 function chip(text, kind, label) {
@@ -241,6 +304,8 @@ async function pollDigest(aim, jobId, row, mode) {
       setRowStatus(row, "ok", `${mode} · done in ${secondsSince(aimState.get(aim.aim_id)?.startedAt)}s`);
       aimState.set(aim.aim_id, { jobId, status: "complete", mode });
       renderDigest(aim, data, mode);
+      const details = row?.querySelector('[data-role="history-wrap"]');
+      if (details?.open) loadHistory(aim, row);
       return;
     }
     setRowStatus(row, "running", `${mode} · ${data.status || "queued"}…`);

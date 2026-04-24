@@ -155,6 +155,14 @@ def trigger_digest(
     return {"job_id": digest_id, "digest_id": digest_id, "status": "queued"}
 
 
+@app.get("/aim/{aim_id}/digests")
+def list_aim_digests(aim_id: str) -> list[dict[str, Any]]:
+    """Lightweight history of completed digests for an Aim, newest first."""
+    if storage.get_aim(aim_id) is None:
+        raise HTTPException(status_code=404, detail=f"aim {aim_id!r} not found")
+    return storage.list_digests_for_aim(aim_id)
+
+
 @app.get("/digest/{digest_id}")
 def get_digest_status(digest_id: str) -> dict[str, Any] | Digest:
     # If the job is live and not yet complete, surface the stage name.

@@ -218,6 +218,66 @@ def _get_digest_local(digest_id: str) -> Digest | None:
         return None
 
 
+def _digest_summary(d: Digest) -> dict[str, Any]:
+    funnel = d.funnel or {}
+    return {
+        "digest_id": d.digest_id,
+        "aim_id": d.aim_id,
+        "headline": d.headline,
+        "date_range": d.date_range,
+        "generated_at": d.generated_at,
+        "mode": d.mode,
+        "status": d.status,
+        "items": funnel.get("items"),
+        "sections": funnel.get("sections"),
+    }
+
+
+def _list_digests_for_aim_local(aim_id: str) -> list[dict[str, Any]]:
+    if not DIGESTS_DIR.exists():
+        return []
+    out: list[dict[str, Any]] = []
+    for path in DIGESTS_DIR.glob("*.json"):
+        try:
+            digest = Digest.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, ValueError) as e:
+            log.warning("list_digests_for_aim: skipping corrupted %s: %s", path, e)
+            continue
+        if digest.aim_id == aim_id and digest.status == "complete":
+            out.append(_digest_summary(digest))
+    out.sort(key=lambda d: d.get("generated_at") or "", reverse=True)
+    return out
+
+
+def list_digests_for_aim(aim_id: str) -> list[dict[str, Any]]:
+    """Lightweight digest summaries for a given Aim, newest first."""
+    client = _get_fs_client()
+    if client is not None:
+        try:
+            from google.cloud.firestore_v1.base_query import FieldFilter  # type: ignore
+
+            query = client.collection("digests").where(
+                filter=FieldFilter("aim_id", "==", aim_id)
+            )
+            out: list[dict[str, Any]] = []
+            for snap in query.stream():
+                try:
+                    digest = Digest.model_validate(snap.to_dict())
+                except ValueError as e:
+                    log.warning("[firestore] list_digests_for_aim: skipping bad doc %s: %s", snap.id, e)
+                    continue
+                if digest.status == "complete":
+                    out.append(_digest_summary(digest))
+            if out:
+                out.sort(key=lambda d: d.get("generated_at") or "", reverse=True)
+                log.info("[firestore] list_digests_for_aim aim=%s → %d", aim_id, len(out))
+                return out
+            log.warning("[firestore] list_digests_for_aim aim=%s empty, falling back to local", aim_id)
+        except Exception as e:  # noqa: BLE001
+            log.warning("[firestore] list_digests_for_aim errored, falling back to local: %s", e)
+    return _list_digests_for_aim_local(aim_id)
+
+
 def get_digest(digest_id: str) -> Digest | None:
     client = _get_fs_client()
     if client is not None:
