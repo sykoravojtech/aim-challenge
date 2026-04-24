@@ -56,6 +56,10 @@ SOURCES: list[dict[str, str]] = [
     {"url": "https://www.forbes.cz/feed/", "source_type": "news", "region": "Czechia"},
     {"url": "https://www.lupa.cz/rss/clanky/", "source_type": "news", "region": "Czechia"},
     {"url": "https://therecursive.com/feed/", "source_type": "news", "region": "CEE"},
+    # Non-RSS: GovTrack JSON API (recent US Congress bills). Keyless proxy for
+    # Congress.gov — production swap is endpoint + Secret Manager key, same shape.
+    {"connector": "govtrack", "url": "https://www.govtrack.us/api/v2/bill",
+     "source_type": "legislation", "region": "US"},
 ]
 
 # Seed Aims written to data/aims/ on first boot (Phase 1). Both demo Aims from
@@ -242,9 +246,81 @@ class RSSConnector:
         )
 
 
+@register("govtrack")
+class GovTrackConnector:
+    """GovTrack.us /api/v2/bill — keyless proxy for Congress.gov. Each bill
+    becomes one document: title + current_status_description as body text
+    (no full-bill-text fetch — GovTrack doesn't ship it and summaries are
+    enough signal for retrieval). Production would swap to api.congress.gov
+    with a key in Secret Manager; connector shape is identical."""
+
+    def __init__(self, url: str, region: str, source_type: str):
+        self.url = url
+        self.region = region
+        self.source_type = source_type
+        self.source_id = url
+
+    def list_new_items(self) -> Iterable[dict[str, Any]]:
+        import urllib.parse
+        import urllib.request
+
+        query = urllib.parse.urlencode({
+            "order_by": "-current_status_date",
+            "limit": MAX_ITEMS_PER_SOURCE,
+            "format": "json",
+        })
+        req = urllib.request.Request(
+            f"{self.url}?{query}",
+            headers={"User-Agent": HTTP_UA, "Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        for bill in payload.get("objects", []):
+            link = bill.get("link")
+            if not link:
+                continue
+            yield {
+                "link": link,
+                "title": (bill.get("title") or "").strip(),
+                "status_desc": bill.get("current_status_description") or "",
+                "status_date": bill.get("current_status_date"),
+            }
+
+    def fetch(self, ref: dict[str, Any]) -> RawDoc | None:
+        url = ref["link"]
+        article_id = hashlib.md5(url.encode()).hexdigest()
+        title = ref.get("title") or url
+        body = (ref.get("status_desc") or "").strip()
+        # Title is substantive ("S. 4383: A bill to …") — use it if body is thin.
+        text = f"{title}\n\n{body}".strip()
+        if len(text) < MIN_EXTRACT_CHARS:
+            return None
+        # GovTrack status_date is YYYY-MM-DD; parse to epoch for recency filter.
+        ts = int(time.time())
+        sd = ref.get("status_date")
+        if sd:
+            try:
+                ts = int(datetime.fromisoformat(sd).replace(tzinfo=timezone.utc).timestamp())
+            except ValueError:
+                pass
+        return RawDoc(
+            article_id=article_id,
+            source_url=url,
+            title=title,
+            text=text,
+            source_type=self.source_type,
+            region=self.region,
+            published_at=sd,
+            published_ts=ts,
+            source_feed=self.url,
+        )
+
+
 # Stubs — register so the extensibility pattern is visible; implementing any of
 # these is a pluggable config change, not a pipeline rewrite (see DECISIONS D6).
-for _name in ("sec", "congress", "reddit", "x", "linkedin", "youtube", "podcast"):
+# `congress` is no longer a stub — GovTrackConnector above covers the legislation
+# source type; the congress.gov JSON API is a drop-in endpoint swap.
+for _name in ("sec", "reddit", "x", "linkedin", "youtube", "podcast"):
     def _make_stub(n):
         class _Stub:
             source_id = n
@@ -472,7 +548,8 @@ def ingest_all_sources(seen_ids: set[str] | None = None) -> tuple[list[RawDoc], 
     for src in SOURCES:
         stat = {"listed": 0, "skipped_seen": 0, "extracted": 0, "used": 0}
         try:
-            conn = RSSConnector(src["url"], src["region"], src["source_type"])
+            connector_cls = REGISTRY[src.get("connector", "rss")]
+            conn = connector_cls(src["url"], src["region"], src["source_type"])
             refs = list(conn.list_new_items())
             stat["listed"] = len(refs)
             for ref in refs:
