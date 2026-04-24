@@ -1,0 +1,40 @@
+# Secrets — never in the image. Secret Manager injects them at deploy time.
+.env
+credentials.json
+*.pem
+
+# Local state — Cloud Run is stateless; Firestore + GCS are the truth.
+data/raw/
+data/aims/
+data/digests/
+
+# Keep data/compare/ (interview exhibits) excluded too — they're dev artefacts.
+data/compare/
+
+# Python + build cruft
+__pycache__
+*.py[cod]
+*.egg-info
+build/
+dist/
+.venv
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Git + editor
+.git
+.github
+.gitignore
+.idea
+.vscode
+.DS_Store
+
+# Docs — not needed at runtime, ~1 MB of markdown.
+docs/
+ASSIGNMENT.md
+README.md
+CLAUDE.md
+
+# tmp / scratch
+tmp/

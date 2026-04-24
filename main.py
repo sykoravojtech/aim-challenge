@@ -79,13 +79,19 @@ app = FastAPI(title="Aim challenge pipeline")
 
 @app.on_event("startup")
 def _seed_demo_aims() -> None:
-    if any(storage.AIMS_DIR.glob("*.json")) if storage.AIMS_DIR.exists() else False:
-        return
+    # Check per-aim via storage.get_aim so a Cloud Run cold start doesn't
+    # overwrite Firestore edits the user made against a previous container
+    # (ephemeral local disk would always look empty on boot).
     now = storage.now_iso()
+    seeded = 0
     for seed in SEED_AIMS:
+        if storage.get_aim(seed["aim_id"]) is not None:
+            continue
         aim = Aim(**seed, created_at=now, updated_at=now)
         storage.save_aim(aim)
-    log.info("seeded %d demo aims", len(SEED_AIMS))
+        seeded += 1
+    if seeded:
+        log.info("seeded %d demo aims", seeded)
 
 
 # ---------------------------------------------------------------------------
