@@ -41,6 +41,31 @@ def retrieve_relevant_chunks(
     return query(index, query_emb, top_k=top_k, filter=build_query_filter(aim))
 
 
+def collapse_chunks_by_article(
+    chunks: list[dict[str, Any]], top_k: int
+) -> list[dict[str, Any]]:
+    """Collapse chunks to best-scored chunk per article_id.
+
+    Why: Tier 3 semantic dedup filters `article_id $ne`, so same-URL re-upserts
+    across `force` runs accumulate in Pinecone — one article can hold 100+
+    near-identical chunks that all crowd the top-k. Without this, a single
+    high-similarity article monopolises the candidate pool and legit
+    on-Aim sources (regulatory / legislation) get starved at rerank time.
+    Surfaced by 6G diagnostic: saas-ai-legislation recall 0/6 traced to
+    `OpenAI Workspace Agents` holding 14/30 of the retrieve pool.
+    """
+    best_by_article: dict[str, dict[str, Any]] = {}
+    for c in chunks:
+        aid = c.get("article_id")
+        if aid is None:
+            continue
+        prev = best_by_article.get(aid)
+        if prev is None or (c.get("score") or 0) > (prev.get("score") or 0):
+            best_by_article[aid] = c
+    ordered = sorted(best_by_article.values(), key=lambda c: -(c.get("score") or 0))
+    return ordered[:top_k]
+
+
 def rerank_chunks(
     client: OpenAI, chunks: list[dict], aim: Aim, top_n: int = 15
 ) -> list[dict]:

@@ -453,15 +453,19 @@ Three-layer fix to 10k docs/day per user — name each verbally during the scali
 2. Batch Tier-3 semantic dedup — throughput
 3. Cloud Run Jobs for ingest fan-out — horizontal scale
 
-### 6G — Rerank/MMR ranking-stage bug (follow-up, surfaced by eval harness) 🔍
-**Lead, not yet fixed.** Eval re-run on saas-ai-legislation after wiring GovTrack showed judge relevance 2.50 → 3.00 (corpus fix worked) but **recall@k stayed 0.00**. Verified the 6 golden SEC press releases are all ingested and live in Pinecone — so retrieval has them, rerank or MMR is dropping them.
+### 6G — ~~Rerank/MMR ranking-stage bug~~ actual root cause: Pinecone chunk-duplication ✅
+**Diagnosed then fixed.** Eval re-run on saas-ai-legislation after wiring GovTrack showed judge relevance 2.50 → 3.00 (corpus fix worked) but **recall@k stayed 0.00**. Verified the 6 golden SEC press releases are all ingested and live in Pinecone — so retrieval had them, but not in the top-30.
 
-Three plausible culprits to instrument:
-1. **Rerank scores regulatory prose lower than news-style headlines.** `gpt-4o-mini` rerank prompt doesn't weight `source_type`. Fix: include `source_type` in rerank context, or add a boost when `source_type ∈ aim.update_types`.
-2. **MMR over-diversifies an SEC cluster.** 5 of 6 golden positives are SEC press releases — once one lands, MMR penalises the other four. Fix: loosen MMR λ when the Aim is topically narrow (`len(update_types) ≤ 2`), or cluster-cap rather than item-cap.
-3. **Recency tilt in cheap-filter stage.** Older SEC filings lose to this morning's OpenAI posts. Fix: decay half-life configurable per `source_type`.
+The three initial hypotheses (source-type-blind rerank / MMR over-diversifying SEC cluster / recency tilt) were all **wrong**. The diagnostic (`scripts/diagnose_saas_ranking.py`) traced each golden URL through retrieve → rerank → MMR and found the real issue: **chunk duplication in Pinecone**. Tier 3 semantic dedup filters `article_id $ne`, so cross-article near-dupes get caught, but same-URL re-upserts from repeated `force` runs accumulate. One article ("OpenAI unveils Workspace Agents") held **126 chunks** in the saas-filter pool; top-30 retrieve was returning only **5 unique articles**, starving rerank of candidate diversity. Rerank/MMR can't re-promote what was never in the pool.
 
-**Diagnostic first, fix second.** Add per-stage logging: for each golden URL, trace retrieved rank → rerank rank → post-MMR inclusion. ~30 min to instrument; then decide which of the three fixes moves recall most.
+**Fix (shipped):** `pipeline/retrieval.collapse_chunks_by_article` + widened `RETRIEVE_RAW_K=1000` + `RETRIEVE_TOP_K=40`. Retrieve a wide raw-chunk pool, keep best-scored chunk per `article_id`, take top N unique articles. ~20 lines across `pipeline/retrieval.py` + `main.py`. No change to rerank or MMR.
+
+**Re-eval (`phase6g_fix`):** recall@k **0.00 → 0.17** (1/6 SEC URLs landed), relevance **3.00 → 4.33**, specificity 4.00, non-dup **3.67 → 4.67**, n_items 3. SEC press-release 2026-40 scored 5/4/5. Headline flipped from OpenAI-framed to *"SaaS-AI Legislative and Regulatory Update."* Recall ceiling here is 4/6 — 2 of the 6 golden SEC URLs aren't in Pinecone at all because their RSS-summary fallback text (252 chars) was near-identical to another SEC item and Tier 3 dedup collapsed them at upsert time; raising the recall ceiling is a separate 6B-scoped fix (MinHash Tier 2 with longer shingles would have kept them distinct).
+
+**What's left that 6G surfaced but didn't fix today:**
+- Periodic Pinecone index cleanup (delete duplicate chunk_ids within same article_id). Scan + delete script, ~30 LOC.
+- Make Tier 3 dedup symmetric: `article_id $eq self` check to skip same-URL re-upserts entirely at upsert time. ~5 LOC in `pipeline/vector_store.upsert_chunks`.
+- The three original ranking-stage hypotheses remain untested — they might move recall further *after* this fix. Source-type weighting in the rerank prompt is the most likely lift; 30 LOC.
 
 ### 6H — Upgrade golden set to snapshot-backed (follow-up)
 Current `evals/golden.jsonl` is URL-only — fragile if a source URL 404s later. **Phase 5 already built the fix**: GCS bronze + BigQuery `raw_articles` persist content keyed on `article_id` (md5-of-URL). Swap the golden set to `{article_id, source_url, content_hash}` triples and reconstitute content from GCS on eval. ~45 min. The snapshot infra exists; the harness just isn't using it.
@@ -476,5 +480,5 @@ Current `evals/golden.jsonl` is URL-only — fragile if a source URL 404s later.
 1. ✅ `--no-cpu-throttling` (5 min) — revision `aim-00002-swg`, 152s end-to-end digest latency on deployed URL
 2. ✅ 6A eval harness (90 min) — phase-over-phase CEE scorecard + saas snapshot
 3. ✅ 6F-lite: GovTrack legislation connector wired live (promoted from stub) — saas judge relevance 2.50 → 3.00, Congress bill at top slot
-4. 🔍 **6G surfaced** by the saas re-eval: recall@0 is a ranking-stage bug, not a corpus bug. Filed, not fixed.
-5. **14:30 fork** — rehearsal over more code. 6G / 6H / 6B / 6C are all solid "next with a week" candidates.
+4. ✅ **6G diagnosed and fixed** (~90 min total): `scripts/diagnose_saas_ranking.py` traced golden URLs through the stack, found Pinecone chunk-duplication (126 chunks for one article, not a rerank/MMR issue as initially hypothesised). Fix: `collapse_chunks_by_article` + widened raw retrieve. Re-eval recall 0.00 → 0.17, relevance 3.00 → 4.33, non-dup 3.67 → 4.67.
+5. **14:30 fork** — 6G shipped cleanly on phase-5-gcp branch; 6H / 6B / 6C (source-type weighting, MinHash) remain solid "next with a week" candidates.

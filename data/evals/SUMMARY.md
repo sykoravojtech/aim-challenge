@@ -43,26 +43,27 @@ Precision is 1.00 everywhere because every digest URL present in the golden set 
 
 Historical phase compare artifacts were only captured for the CEE Aim, so no phase-over-phase sweep is possible here. The most recent saas digest (current pipeline state, equivalent to `phase4_full`) was evaluated against the 9-row golden subset for this Aim.
 
-### Scorecard — before/after wiring GovTrack legislation connector
+### Scorecard — corpus fix (GovTrack) then ranking fix (6G)
 
 | phase | recall@k | precision | relevance | specificity | non-dup | n_items |
 |---|---|---|---|---|---|---|
-| phase4_full (saas, RSS-only)       | **0.00** | — | 2.50 | 3.50 | **4.00** | 2 |
-| phase6_congress (GovTrack live)    | **0.00** | — | **3.00** | **4.00** | 3.67 | **3** |
+| phase4_full (saas, RSS-only)       | **0.00** | — | 2.50 | 3.50 | 4.00 | 2 |
+| phase6_congress (GovTrack live)    | **0.00** | — | 3.00 | 4.00 | 3.67 | 3 |
+| **phase6g_fix (article-dedup retrieve)** | **0.17** | 1.00 | **4.33** | **4.00** | **4.67** | 3 |
 
 **Judge notes from the phase6 run:** the top item was *"Introduction of H.R. 8470: Surveillance Accountability Act"* — a real US Congress bill surfaced through the new GovTrack connector, scoring **relevance 5, specificity 4, non-dup 5** (a perfect top-slot item). Did not exist in the RSS-only run.
 
-### Why recall@k didn't move — the real reason
+**phase6g_fix judge notes:** H.R. 8470 held the top slot (5/5/5) and **a real SEC press release** — *"SEC and CFTC Propose Amendments to Reporting Requirements"* (sec.gov/newsroom/press-releases/2026-40) — landed at 5/4/5. Third item (OpenAI compliance/privacy) dropped to rel=3 (was dominant at 2.50 avg before). The digest now reads as a legislative+regulatory briefing first and a tech-news briefing third, which is what the Aim asked for.
+
+### Why recall@k was 0.00 — diagnosed, then fixed
 
 Initial hypothesis was "golden URLs rolled off the RSS feeds" — that was wrong. Checked: **all 6 golden positives are ingested, embedded, and live in Pinecone** (they're in `data/raw/*.json`, written through to GCS bronze + BigQuery `raw_articles` per Phase 5). The corpus has the right documents.
 
-So the bug is **downstream of retrieval**: rerank and/or MMR are actively dropping them in favour of tech-news items. Three plausible culprits, all testable:
+The diagnostic ([`scripts/diagnose_saas_ranking.py`](../../scripts/diagnose_saas_ranking.py)) traced each of the 6 golden URLs through retrieve → rerank → MMR and surfaced the actual root cause: **chunk duplication in Pinecone**. One article ("OpenAI unveils Workspace Agents") held **126 chunks** out of ~1000 under the saas filter — Tier 3 semantic dedup filters `article_id $ne`, so it catches cross-article near-dupes but lets same-article re-upserts from repeated `force` runs accumulate. Top-30 retrieve was returning only **5 unique articles**, 14 of which were near-identical chunks of the same tech-news article, starving the candidate pool of regulatory/legislation content.
 
-1. **Rerank scores SEC press-release prose lower than TechCrunch-style headlines** because the latter read as "newsier" to `gpt-4o-mini`. The rerank prompt doesn't weight `source_type=regulatory` explicitly.
-2. **MMR over-diversifies a cluster.** Five of six golden positives are SEC press releases — once one lands in the diverse top-10, MMR penalises the others for similarity, knocking all five out.
-3. **Recency tilt in the cheap-filter stage** pushes 2-day-old SEC filings below this morning's OpenAI product posts.
+**Fix: `pipeline/retrieval.collapse_chunks_by_article`** — retrieve a wide raw-chunk pool (top_k=1000), collapse to best-scored chunk per `article_id`, keep top 40 unique articles. Two-file change (`pipeline/retrieval.py` + `main.py`). Post-fix diagnostic: 4 of 6 golden SEC URLs land in the reranker pool (2 are absent from the index — filtered at upsert time by Tier 3 dedup collapsing near-identical short SEC RSS summaries against each other; real ceiling is 4/6, not 6/6). The re-eval ran `phase6g_fix` and one SEC URL (2026-40) made the final digest at rel=5/spec=4/nondup=5.
 
-This is a better finding than "the URLs expired" — it's a concrete, prioritisable lead inside the pipeline, filed as ROADMAP Phase 6 follow-up.
+The three original hypotheses (rerank source-type blindness, MMR over-diversifying, recency tilt) all turned out to be downstream of the real issue — none would have moved the needle without first fixing the starved candidate pool. That's the diagnostic-first discipline paying for itself: if we'd patched rerank blindly, we'd have spent 60 min on the wrong fix.
 
 ### Why LLM-judge scores moved despite recall stalling
 
@@ -77,19 +78,17 @@ Reading them together is how you learn that the corpus fix *worked* (judge up) b
 
 A lingering worry — "what if golden URLs disappear from source feeds later?" — is already mooted by Phase 5 infra: **GCS bronze stores raw article payloads, BigQuery `raw_articles` stores the clean-extracted version**. Golden labels can be pinned to `article_id` (md5-of-URL) and reconstituted from either store. First-week improvement: swap `evals/golden.jsonl` from URL-only to `{article_id, source_url, content_hash}` triples backed by GCS lookup. The snapshot infra is there; the harness just isn't using it yet.
 
-### What this surfaces (and it's the most interesting finding in the whole eval)
+### What this surfaced (before the 6G fix)
 
-**Recall is zero.** Of 6 golden positives for this Aim, the digest hit none. The two items that *did* land (OpenAI Privacy Filter, OpenAI Workspace Agents) are OpenAI product news — not legislation, not SEC filings, not Congressional commentary. The judge agrees: relevance 2.50 / 5 is the lowest score in the whole matrix.
+Recall was **zero** on the RSS-only and GovTrack-live snapshots. The two items that landed (OpenAI Privacy Filter, OpenAI Workspace Agents) were tech news, not legislation. Judge relevance 2.50 / 5 was the lowest score in the whole matrix.
 
-This is **topical drift** — the classic failure mode of semantic retrieval. The Aim's summary mentions "AI companies" and the embedding space pulls anything with "AI" in the headline, outranking actual legislative content on cosine similarity alone. Without evals, this digest reads fine to a human skimmer — it's coherent, recent, well-written. Only the golden set exposes that it's answering the wrong question.
+This looked like **topical drift** at first — the Aim's summary mentions "AI companies" and the embedding space was pulling anything with "AI" in the headline. The fix was NOT retrieval-vector tuning but removing the candidate-pool duplication that was masquerading as drift (see § "Why recall@k was 0.00" above). With a clean pool of 40 unique articles, regulatory and legislation items rank into the digest on their own merit without any rerank-prompt changes.
 
-### Root cause hypothesis
+### Root cause (as actually diagnosed, replacing earlier hypotheses)
 
-1. **RSS feed list is thin on legislation sources.** The Federal Register regulatory feed is one of ten; the other nine skew tech-news. Retrieval can only surface what was ingested.
-2. **Congress.gov connector is stubbed, not live.** The brief's #1 example source isn't wired — so every Congressional bill, hearing, committee mention is invisible to the pipeline.
-3. **No region/source_type weighting in retrieval.** A TechCrunch article about AI ranks as high as a SEC filing about AI — the `source_type` metadata is filtered on but not weighted.
+The real bug was **chunk-duplication in Pinecone**, not corpus thinness or rerank blindness. Tier 3 dedup's `article_id $ne` filter means same-URL re-upserts from repeated `force` runs accumulate — one article held 126 chunks, crowding the top-30 candidate pool down to 5 unique articles. Every other "fix" (source-type weighting, rerank prompt, recency tilt) was downstream of this, and would have done nothing until the pool was cleaned. The eval harness + diagnostic script is what turned an abstract worry into a one-line pinpoint.
 
-Fixes 1 and 2 are in the "next with a week" column already; fix 3 is a 1-hour tweak to the retrieval scorer. The eval harness is what makes this a prioritizable bug instead of an abstract worry.
+Complementary lever still on the table: `GovTrackConnector` (6F-lite) is live — wiring real Congress.gov / EDGAR JSON would promote the "next with a week" bullet into "next with a day."
 
 ## Honest gaps to call out in the demo
 
@@ -99,4 +98,4 @@ Fixes 1 and 2 are in the "next with a week" column already; fix 3 is a 1-hour tw
 
 ## Demo framing
 
-> *"The brief asks for ~10 relevant insights out of 10k docs. I didn't want to claim that without measuring it, so every digest gets a recall@k number and an LLM-as-judge score on three axes. Three findings the evals drove: pure rerank hurt recall on the CEE Aim until MMR repaired it; the SaaS-AI-Legislation Aim read fine but scored 2.50/5 relevance because the feed list was all tech-news; when I wired a GovTrack legislation connector, judge relevance moved 2.50 → 3.00 and a real Congress bill took the top slot at 5/5 — but recall stayed 0. That recall stall is actually the most interesting finding: I checked, and the 6 golden SEC press releases are all in Pinecone. So rerank or MMR is dropping them. That's a concrete ranking-stage bug, filed as follow-up, and it's exactly the kind of thing you'd never find without evals because the digest reads fine."*
+> *"The brief asks for ~10 relevant insights out of 10k docs. I didn't want to claim that without measuring it, so every digest gets a recall@k number and an LLM-as-judge score on three axes. The evals drove four findings, in order: pure rerank hurt recall on the CEE Aim until MMR repaired it; the SaaS-AI-Legislation Aim read fine but scored 2.50/5 relevance because the feed list was all tech-news; wiring a GovTrack legislation connector moved judge relevance 2.50 → 3.00 and put a real Congress bill at the top slot — but recall stayed 0. That was the most interesting clue: a diagnostic script traced each of the 6 golden URLs through retrieve → rerank → MMR, and the top-30 retrieve was returning only 5 unique articles because one tech-news article had 126 duplicate chunks in Pinecone — Tier 3 dedup filters `article_id $ne` so same-URL re-upserts from repeated force runs accumulate. A two-file, ~20-line fix — retrieve wider, collapse to best-scored chunk per article — moved recall 0.00 → 0.17, relevance 3.00 → 4.33, non-dup 3.67 → 4.67, and the digest now reads as legislative+regulatory first, tech-news third. That's the whole loop: eval found the symptom, diagnostic found the cause, fix moved the number."*

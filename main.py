@@ -44,13 +44,21 @@ from pipeline.report import generate_digest  # noqa: E402
 from pipeline.retrieval import (  # noqa: E402
     build_query_filter,
     build_query_text,
+    collapse_chunks_by_article,
     mmr_diversify,
     rerank_chunks,
 )
 from pipeline.vector_store import get_index, query as vector_query, upsert_chunks  # noqa: E402
 
-# Phase 4 funnel shape: retrieve 30 → rerank to 15 → MMR diversify to 10 → generate.
-RETRIEVE_TOP_K = 30
+# Phase 4 funnel shape: retrieve → rerank → MMR diversify → generate.
+# Phase 6G: Tier-3 dedup filters `article_id $ne` — it catches cross-article
+# near-dupes but NOT same-article re-upserts across `force` runs, so Pinecone
+# accumulates chunk-duplicates (diagnostic showed one article with 126 chunks).
+# Fix: retrieve a wide raw-chunk pool, collapse to best-scored chunk per
+# article_id, keep top RETRIEVE_TOP_K unique articles. Moved saas-ai recall
+# 0.00 → >0 without touching rerank or MMR.
+RETRIEVE_TOP_K = 40
+RETRIEVE_RAW_K = 1000
 RERANK_TOP_N = 15
 MMR_TOP_K = 10
 MMR_LAMBDA = 0.7
@@ -292,14 +300,21 @@ def run_pipeline(aim_id: str, digest_id: str, mode: Mode) -> None:
 
         _set_stage(digest_id, "retrieving")
         q_emb = embed_texts(oai, [build_query_text(aim)])[0]
-        retrieved = vector_query(
+        raw_chunks = vector_query(
             index,
             q_emb,
-            top_k=RETRIEVE_TOP_K,
+            top_k=RETRIEVE_RAW_K,
             filter=build_query_filter(aim),
             include_values=True,
         )
+        # Phase 6G: collapse to unique articles. See retrieval.collapse_chunks_by_article.
+        retrieved = collapse_chunks_by_article(raw_chunks, top_k=RETRIEVE_TOP_K)
+        funnel["retrieved_raw"] = len(raw_chunks)
         funnel["retrieved"] = len(retrieved)
+        log.info(
+            "[%s] retrieve funnel: raw=%d → unique_articles=%d (top_k=%d)",
+            digest_id, len(raw_chunks), len(retrieved), RETRIEVE_TOP_K,
+        )
         if not retrieved:
             log.warning("[%s] retrieval returned 0 chunks; regions=%s", digest_id, aim.regions)
 
