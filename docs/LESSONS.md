@@ -102,3 +102,18 @@ Rule: before adding rerank, verify the pool has at least ~3× as many distinct o
 
 **What to do about it:** Lead the demo with the compare tool, not the raw digest. Say it aloud: *"mean relevance drops 8.00→7.00 because MMR is doing its job — that's the section coverage buying you 3 sections instead of 2 at the cost of swapping one high-score near-duplicate for a lower-but-still-on-Aim chunk."* If mean relevance ever goes up with MMR on, the candidate pool was thinner than it looks — re-check the retrieve top_k before blaming rerank.
 
+## L6. Cloud Run europe-west3 → Pinecone serverless has 6–10 s per-query roundtrips
+
+**Phase:** 5
+
+**What surprised me:** First `incremental` run on the deployed Cloud Run service ingested 78 articles cleanly, mirrored them to BigQuery + GCS in ~6 s, then **stalled in the upsert stage for >10 minutes**. Laptop runs of the same path complete in ~60–90 s. Cloud Run logs show the Tier 3 semantic-dedup loop (`semantic_dup of {id}`) emitting one line every **6–10 s per chunk** — the per-chunk `top_k=1` Pinecone query is paying a full cross-region roundtrip from `europe-west3` to Pinecone's AWS-hosted serverless index on every call. Locally that round-trip is <200 ms; Cloud-Run-to-Pinecone is 30–50× slower.
+
+**Context:** Pinecone serverless is hosted on AWS `us-east-1` / `us-west-2` by default (no europe-west3 option when the index was created). The laptop isn't noticeably faster per-hop, but its dedup loop batches much less aggressively and still finishes because the laptop isn't paying inter-cloud egress. On Cloud Run, 78 articles × ~4 chunks each = ~300 per-chunk queries × 8 s average = ~40 min just for Tier 3 dedup. BQ + GCS writes finished long before that because both are same-region (europe-west3 / us-central1 same-continent) and the payload is one blob / one batched insert.
+
+**What to do about it:** Three mitigations, any combination:
+1. **Batch the Tier 3 check.** Instead of one `top_k=1` per chunk, batch N chunks into a single multi-vector query (`index.query` accepts one vector; use `index.fetch` across a candidate set of article_ids we already have in the seen-set). Reduces ~300 roundtrips to ~10 batched ones. ~1 hour to wire.
+2. **Skip Tier 3 in `incremental` mode on the deployed service.** Tier 1 URL md5 already catches ~99% of real duplicates (77/78 on the L-measured re-run); Tier 3 is insurance. Gate it behind a flag and flip off on Cloud Run — lose measured-semantic-dedup coverage, keep `incremental` under 2 min.
+3. **Move Pinecone index to `eu-west1` AWS** (Pinecone serverless supports it). Same cost, ~100 ms roundtrips instead of 8 s. Requires full reindex — afternoon-sized, not today-sized.
+
+**Demo implication today:** use `cached` mode for the live Cloud Run demo. It's the read-only path — retrieve from existing Pinecone state → rerank → generate, 30 s cold-start, no cross-region upsert loop. `incremental` + `force` still work, just slow; show them on the laptop if asked, point at this lesson as the named "what's next with an hour" bullet.
+

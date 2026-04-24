@@ -389,9 +389,9 @@ Tick as each lands:
 - [x] Phase 3 — Frontend
 - [x] Phase 4 — Rerank + MMR + compare tooling
 - [x] Phase 5 console pre-work (APIs, Firestore db `(default)`, BQ dataset `aim_pipeline` in `europe-west3`, GCS bucket `aim-challenge-raw-494220` in `us-central1`, Artifact Registry repo `aim-images` in `europe-west3`, Secret Manager `openai-api-key` + `pinecone-api-key`, runtime SA `aim-pipeline-sa@aim-challenge-494220.iam.gserviceaccount.com` with 6 roles incl. Secret Manager Secret Accessor)
-- [ ] Phase 5a — Firestore swap (`storage.py`)
-- [ ] Phase 5b — BigQuery `raw_articles` (`ingestion.py`)
-- [ ] Phase 5e — GCS bronze
-- [ ] Phase 5f — Cloud Run deploy with Secret Manager (the goal)
+- [x] Phase 5a — Firestore swap (`storage.py`) — dual-write behind `USE_FIRESTORE`, reader flipped, local fallback preserved
+- [x] Phase 5b — BigQuery `raw_articles` (`ingestion.py`) — `mirror_raw_to_bq()` auto-creates table, 82 rows across 3 jobs
+- [x] Phase 5e — GCS bronze — `mirror_raw_to_gcs()` writes `gs://aim-challenge-raw-494220/raw/{date}/{job_id}.json`
+- [x] Phase 5f — Cloud Run deploy with Secret Manager (the goal) — **live at https://aim-645297577758.europe-west3.run.app**
 - [x] ~~Phase 5c — VertexAI embeddings~~ (cut: Pinecone reindex cost > signal)
 - [x] ~~Phase 5d — Typed digest items~~ (cut: product, not infra)
