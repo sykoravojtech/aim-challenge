@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import calendar
 import hashlib
+import json
 import logging
 import os
 import re
@@ -402,6 +403,63 @@ def mirror_raw_to_bq(articles: list[dict], job_id: str) -> None:
         "[bigquery] inserted %d rows into %s.%s for job %s",
         len(rows), _BQ_DATASET, _BQ_TABLE, job_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# GCS bronze mirror (Phase 5e)
+# ---------------------------------------------------------------------------
+#
+# Archive the exact JSON payload that goes to data/raw/<job_id>.json to GCS
+# under raw/{YYYY-MM-DD}/{job_id}.json. "Bronze" tier — untransformed ingest
+# output so the pipeline can be replayed from object storage without
+# re-fetching upstream. Gated behind GCS_BUCKET so an absent bucket env var
+# is a silent no-op (matches USE_FIRESTORE / USE_BIGQUERY ergonomics).
+
+_GCS_BUCKET = os.getenv("GCS_BUCKET", "").strip()
+_GCS_UNSET: Any = object()
+_gcs_client: Any = _GCS_UNSET
+
+
+def _get_gcs_client():
+    """Lazy google-cloud-storage client. None when disabled/unavailable."""
+    global _gcs_client
+    if not _GCS_BUCKET:
+        return None
+    if _gcs_client is _GCS_UNSET:
+        try:
+            from google.cloud import storage  # type: ignore
+
+            _gcs_client = storage.Client()
+            log.info("[gcs] client initialised (bucket=%s)", _GCS_BUCKET)
+        except Exception as e:  # noqa: BLE001
+            log.warning("[gcs] client init failed, bronze mirror disabled: %s", e)
+            _gcs_client = None
+    return _gcs_client
+
+
+def mirror_raw_to_gcs(articles: list[dict], job_id: str) -> None:
+    """Mirror raw articles JSON to gs://<bucket>/raw/{date}/{job_id}.json.
+
+    No-op when GCS_BUCKET is unset. Never raises — local JSON stays the replay
+    source of truth; GCS is a bronze archive for the "reprocessing" talking
+    point.
+    """
+    if not _GCS_BUCKET or not articles:
+        return
+    client = _get_gcs_client()
+    if client is None:
+        return
+
+    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    blob_path = f"raw/{date}/{job_id}.json"
+    payload = json.dumps(articles, indent=2, ensure_ascii=False)
+    try:
+        bucket = client.bucket(_GCS_BUCKET)
+        blob = bucket.blob(blob_path)
+        blob.upload_from_string(payload, content_type="application/json")
+        log.info("[gcs] uploaded %d articles to gs://%s/%s", len(articles), _GCS_BUCKET, blob_path)
+    except Exception as e:  # noqa: BLE001
+        log.warning("[gcs] upload gs://%s/%s failed: %s", _GCS_BUCKET, blob_path, e)
 
 
 def ingest_all_sources(seen_ids: set[str] | None = None) -> tuple[list[RawDoc], dict[str, dict[str, int]]]:

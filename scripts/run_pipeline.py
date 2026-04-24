@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from pipeline._util import safe_llm_json, strip_markdown_fences  # noqa: E402,F401
-from pipeline.ingestion import mirror_raw_to_bq  # noqa: E402
+from pipeline.ingestion import mirror_raw_to_bq, mirror_raw_to_gcs  # noqa: E402
 
 load_dotenv(ROOT / ".env")
 
@@ -484,27 +484,26 @@ def run_for_aim(aim: dict[str, Any]) -> dict[str, Any]:
         log.error("no docs ingested — aborting")
         return {"headline": "No sources returned content", "date_range": _today_range(), "sections": []}
 
-    # BQ mirror (Phase 5b, gated by USE_BIGQUERY). No-op when flag unset.
-    # This script doesn't persist raw JSON locally (Phase 0 skeleton); the
-    # mirror still goes out so BQ smoke-tests work end-to-end.
+    # BQ + GCS mirrors (Phase 5b/5e, gated by USE_BIGQUERY / GCS_BUCKET). No-op
+    # when flags unset. This script doesn't persist raw JSON locally (Phase 0
+    # skeleton); the mirrors still go out so GCP smoke-tests work end-to-end.
     job_id = f"phase0-{aim['aim_id']}-{int(time.time())}"
-    mirror_raw_to_bq(
-        [
-            {
-                "article_id": d.article_id,
-                "source_url": d.source_url,
-                "title": d.title,
-                "text": d.text,
-                "source_type": d.source_type,
-                "region": d.region,
-                "published_at": d.published_at,
-                "published_ts": d.published_ts,
-                "source_feed": d.source_feed,
-            }
-            for d in docs
-        ],
-        job_id,
-    )
+    raw_rows = [
+        {
+            "article_id": d.article_id,
+            "source_url": d.source_url,
+            "title": d.title,
+            "text": d.text,
+            "source_type": d.source_type,
+            "region": d.region,
+            "published_at": d.published_at,
+            "published_ts": d.published_ts,
+            "source_feed": d.source_feed,
+        }
+        for d in docs
+    ]
+    mirror_raw_to_bq(raw_rows, job_id)
+    mirror_raw_to_gcs(raw_rows, job_id)
 
     log.info("[2/7] chunking (size=%d overlap=%d)...", CHUNK_SIZE, CHUNK_OVERLAP)
     chunks = chunk_articles(docs)
