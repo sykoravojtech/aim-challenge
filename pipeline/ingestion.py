@@ -11,8 +11,22 @@ from typing import Any, Iterable, Protocol
 
 import feedparser
 import trafilatura
+from tenacity import (
+    RetryError,
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 log = logging.getLogger(__name__)
+
+# Tenacity defaults reused by both retryers below. 3 attempts with 1→8 s
+# exponential backoff covers transient TCP / DNS hiccups without blowing the
+# ingest budget when a source is hard-down.
+_RETRY_ATTEMPTS = 3
+_RETRY_WAIT = wait_exponential(multiplier=1, min=1, max=8)
 
 MAX_ITEMS_PER_SOURCE = 8
 MIN_EXTRACT_CHARS = 200
@@ -95,6 +109,42 @@ class RawDoc:
         }
 
 
+class FeedBozoError(RuntimeError):
+    """Raised by `_parse_feed` when feedparser silently returns 0 entries with
+    `bozo=1` — the standing-idiom silent-empty case (see LESSONS § feedparser
+    silent failures). Typed so tenacity can selectively retry it."""
+
+
+@retry(
+    stop=stop_after_attempt(_RETRY_ATTEMPTS),
+    wait=_RETRY_WAIT,
+    retry=retry_if_exception_type((FeedBozoError, OSError, RuntimeError)),
+    reraise=True,
+    before_sleep=before_sleep_log(log, logging.WARNING),
+)
+def _parse_feed(url: str) -> Any:
+    """Tenacity-wrapped feedparser call. Converts bozo-empty into FeedBozoError
+    so retries actually fire (feedparser otherwise swallows everything)."""
+    feed = feedparser.parse(url, request_headers={"User-Agent": HTTP_UA})
+    if not feed.entries and feed.get("bozo", 0):
+        exc = feed.get("bozo_exception")
+        raise FeedBozoError(f"feed {url} bozo-empty: {exc}")
+    return feed
+
+
+@retry(
+    stop=stop_after_attempt(_RETRY_ATTEMPTS),
+    wait=_RETRY_WAIT,
+    reraise=True,
+    before_sleep=before_sleep_log(log, logging.WARNING),
+)
+def _fetch_url(url: str) -> str | None:
+    """Tenacity-wrapped `trafilatura.fetch_url`. Raised exceptions (DNS,
+    connection reset) retry; `None` passes through unretried — hard 403/404s
+    are stable and the RSS-summary fallback handles them."""
+    return trafilatura.fetch_url(url)
+
+
 def _published_ts(entry: Any) -> int:
     """Epoch seconds from an RSS entry's pubDate. Falls back to ingest-time so
     every chunk has a number the recency filter can compare against."""
@@ -140,10 +190,7 @@ class RSSConnector:
         self.source_id = url
 
     def list_new_items(self) -> Iterable[dict[str, Any]]:
-        feed = feedparser.parse(self.url, request_headers={"User-Agent": HTTP_UA})
-        if not feed.entries and feed.get("bozo", 0):
-            exc = feed.get("bozo_exception")
-            raise RuntimeError(f"feed {self.url} bozo-empty: {exc}")
+        feed = _parse_feed(self.url)
         for entry in feed.entries[:MAX_ITEMS_PER_SOURCE]:
             link = entry.get("link")
             if not link:
@@ -160,9 +207,9 @@ class RSSConnector:
         url = ref["link"]
         article_id = hashlib.md5(url.encode()).hexdigest()
         try:
-            html = trafilatura.fetch_url(url)
-        except Exception as e:
-            log.warning("fetch_url raised on %s: %s", url, e)
+            html = _fetch_url(url)
+        except (RetryError, Exception) as e:
+            log.warning("fetch_url retries exhausted on %s: %s", url, e)
             html = None
         text = ""
         if html:
@@ -224,7 +271,16 @@ def ingest_all_sources(seen_ids: set[str] | None = None) -> tuple[list[RawDoc], 
                     if article_id in seen_ids:
                         stat["skipped_seen"] += 1
                         continue
-                doc = conn.fetch(ref)
+                try:
+                    doc = conn.fetch(ref)
+                except Exception as article_exc:
+                    # One bad article (tenacity-exhausted fetch, trafilatura
+                    # crash on malformed HTML) must not kill the source.
+                    log.warning(
+                        "source %s article %s fetch failed: %s",
+                        src["url"], ref.get("link"), article_exc,
+                    )
+                    continue
                 if doc is None:
                     continue
                 stat["extracted"] += 1

@@ -203,17 +203,17 @@ Save ~20 min. Main session integrates (imports, job_status dict, endpoint wiring
 **Dedup strategy: Tier 1 (URL md5) live, Tier 3 (embedding cosine >0.93) live. Tier 2 (MinHash) *talked-about* in docs/DECISIONS.md, not implemented.** See D13.
 
 **Checklist:**
-- [ ] `storage.save_raw_articles(articles, job_id)` → `data/raw/{job_id}.json` with `article_id = md5(url).hexdigest()`
-- [ ] `storage.get_seen_article_ids()` → union `article_id`s across `data/raw/*.json`
-- [ ] `ingest_all_sources(seen_ids=...)` skips matches
-- [ ] **Tier 3 semantic dedup:** before upserting a new chunk, query Pinecone `top_k=1`; if `score > 0.93` skip the chunk (log "semantic_dup of {id}")
-- [ ] `@tenacity.retry(stop_after_attempt(3), wait_exponential(...))` on `feedparser.parse` (convert `bozo_exception` to raised exception first — see [LESSONS § feedparser silent failures](LESSONS.md#feedparser-silent-failures)) and `trafilatura.fetch_url`
-- [ ] Per-source `try/except` in `ingest_all_sources` — broken feed must not kill the run
-- [ ] Skip articles with <200 chars extracted text (fallback to RSS summary applied first)
-- [ ] `logging.getLogger(__name__)` everywhere; `logging.basicConfig(level=INFO)` in `main.py`
-- [ ] Capture `data/compare/phase2_dedup.json` before moving on
+- [x] `storage.save_raw_articles(articles, job_id)` → `data/raw/{job_id}.json` with `article_id = md5(url).hexdigest()`
+- [x] `storage.get_seen_article_ids()` → union `article_id`s across `data/raw/*.json`
+- [x] `ingest_all_sources(seen_ids=...)` skips matches
+- [x] **Tier 3 semantic dedup:** before upserting a new chunk, query Pinecone `top_k=1`; if `score > 0.93` skip the chunk (log "semantic_dup of {id}")
+- [x] `@tenacity.retry(stop_after_attempt(3), wait_exponential(...))` on `feedparser.parse` (convert `bozo_exception` to raised exception first — see [LESSONS § feedparser silent failures](LESSONS.md#feedparser-silent-failures)) and `trafilatura.fetch_url`
+- [x] Per-source `try/except` in `ingest_all_sources` — broken feed must not kill the run (+ per-article try/except so one bad article can't kill a source)
+- [x] Skip articles with <200 chars extracted text (fallback to RSS summary applied first)
+- [x] `logging.getLogger(__name__)` everywhere; `logging.basicConfig(level=INFO)` in `main.py`
+- [x] Capture `data/compare/phase2_dedup.json` before moving on
 
-**Done when:** second run of the same Aim: 0 new articles ingested (Tier 1), 0 new chunks upserted (Tier 3), full Digest still emitted from cached Pinecone content.
+**Done when:** second run of the same Aim: 0 new articles ingested (Tier 1), 0 new chunks upserted (Tier 3), full Digest still emitted from cached Pinecone content. ✅ Measured run 2 `incremental`: 77/78 articles `skipped_seen` (the 1 "new" was a Forbes.cz entry published between the two runs, not a miss); 4 chunks upserted for it; retrieval + Digest still emit in ~13 s (see [DEMO_NOTES § 1 Phase 2 funnels](DEMO_NOTES.md#1-how-it-works--the-8-verb-spine)).
 
 **Subagent fan-out:** spawn 3 in parallel — each touches a different file:
 - **A → Tier 1 URL md5** in `pipeline/storage.py` (`save_raw_articles` with `article_id=md5(url).hexdigest()`, `get_seen_article_ids()` union).
@@ -356,7 +356,7 @@ Tick as each lands:
 - [x] Pre-Phase-0 pre-flight (keys, credentials, Pinecone index)
 - [x] Phase 0 — Walking skeleton
 - [x] Phase 1 — FastAPI + CRUD + three-mode trigger
-- [ ] Phase 2 — Dedup (Tier 1 + Tier 3) + retries
+- [x] Phase 2 — Dedup (Tier 1 + Tier 3) + retries
 - [ ] Phase 3 — Frontend
 - [ ] Phase 4 — Rerank + MMR + compare tooling
 - [ ] Phase 5a — Firestore swap

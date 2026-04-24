@@ -239,8 +239,16 @@ def run_pipeline(aim_id: str, digest_id: str, mode: Mode) -> None:
                 funnel["embedded"] = len(embeddings)
 
                 _set_stage(digest_id, "upserting")
-                upserted = upsert_chunks(index, chunks, embeddings)
-                funnel["upserted"] = upserted
+                upsert_result = upsert_chunks(index, chunks, embeddings)
+                funnel["upserted"] = upsert_result["upserted"]
+                funnel["semantic_dups"] = upsert_result["semantic_dups"]
+                log.info(
+                    "[%s] upserted %d / %d chunks (tier3 semantic_dups=%d)",
+                    digest_id,
+                    upsert_result["upserted"],
+                    upsert_result["candidates"],
+                    upsert_result["semantic_dups"],
+                )
 
         _set_stage(digest_id, "retrieving")
         retrieved = retrieve_relevant_chunks(oai, index, aim, top_k=RETRIEVE_TOP_K)

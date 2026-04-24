@@ -1,0 +1,305 @@
+{
+  "phase": "phase2_dedup",
+  "aim_id": "cee-founder-media",
+  "run1_force": {
+    "digest_id": "phase2-run1-force",
+    "funnel": {
+      "aim_id": "cee-founder-media",
+      "digest_id": "phase2-run1-force",
+      "mode": "force",
+      "ingested": 78,
+      "source_stats": {
+        "https://techcrunch.com/feed/": {
+          "listed": 8,
+          "skipped_seen": 0,
+          "extracted": 8,
+          "used": 8
+        },
+        "https://news.ycombinator.com/rss": {
+          "listed": 8,
+          "skipped_seen": 0,
+          "extracted": 7,
+          "used": 7
+        },
+        "https://arxiv.org/rss/cs.AI": {
+          "listed": 8,
+          "skipped_seen": 0,
+          "extracted": 8,
+          "used": 8
+        },
+        "https://www.theverge.com/rss/index.xml": {
+          "listed": 8,
+          "skipped_seen": 0,
+          "extracted": 8,
+          "used": 8
+        },
+        "https://venturebeat.com/feed/": {
+          "listed": 7,
+          "skipped_seen": 0,
+          "extracted": 7,
+          "used": 7
+        },
+        "https://www.sec.gov/news/pressreleases.rss": {
+          "listed": 8,
+          "skipped_seen": 0,
+          "extracted": 8,
+          "used": 8
+        },
+        "https://cc.cz/feed/": {
+          "listed": 8,
+          "skipped_seen": 0,
+          "extracted": 8,
+          "used": 8
+        },
+        "https://www.forbes.cz/feed/": {
+          "listed": 8,
+          "skipped_seen": 0,
+          "extracted": 8,
+          "used": 8
+        },
+        "https://www.lupa.cz/rss/clanky/": {
+          "listed": 8,
+          "skipped_seen": 0,
+          "extracted": 8,
+          "used": 8
+        },
+        "https://therecursive.com/feed/": {
+          "listed": 8,
+          "skipped_seen": 0,
+          "extracted": 8,
+          "used": 8
+        }
+      },
+      "chunked": 623,
+      "embedded": 623,
+      "upserted": 614,
+      "semantic_dups": 9,
+      "retrieved": 20,
+      "sections": 3,
+      "items": 4
+    },
+    "sections": 3,
+    "items": 4
+  },
+  "run2_incremental": {
+    "digest_id": "phase2-run2-incremental",
+    "funnel": {
+      "aim_id": "cee-founder-media",
+      "digest_id": "phase2-run2-incremental",
+      "mode": "incremental",
+      "ingested": 1,
+      "source_stats": {
+        "https://techcrunch.com/feed/": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://news.ycombinator.com/rss": {
+          "listed": 8,
+          "skipped_seen": 7,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://arxiv.org/rss/cs.AI": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://www.theverge.com/rss/index.xml": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://venturebeat.com/feed/": {
+          "listed": 7,
+          "skipped_seen": 7,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://www.sec.gov/news/pressreleases.rss": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://cc.cz/feed/": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://www.forbes.cz/feed/": {
+          "listed": 8,
+          "skipped_seen": 7,
+          "extracted": 1,
+          "used": 1
+        },
+        "https://www.lupa.cz/rss/clanky/": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://therecursive.com/feed/": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        }
+      },
+      "chunked": 4,
+      "embedded": 4,
+      "upserted": 4,
+      "semantic_dups": 0,
+      "retrieved": 20,
+      "sections": 3,
+      "items": 4
+    },
+    "sections": 3,
+    "items": 4
+  },
+  "digest_run2": {
+    "digest_id": "phase2-run2-incremental",
+    "aim_id": "cee-founder-media",
+    "headline": "Czech & CEE Founder Media Digest",
+    "date_range": "Apr 24, 2026 (single-day run)",
+    "sections": [
+      {
+        "title": "Recent Fundraising Activities",
+        "items": [
+          {
+            "title": "Polish-Based GRAI Secures €7.65M Seed Funding",
+            "body": "Polish-based GRAI has successfully secured €7.65 million in seed funding to develop its AI-powered music remix platform. This funding will help the startup enhance its technology and expand its market reach.",
+            "source_urls": [
+              "https://therecursive.com/grai-secures-e7-65m-seed-funding-to-build-ai-powered-music-remix-platform/"
+            ],
+            "source_count": 1,
+            "item_type": "investment",
+            "relevance_score": 8
+          },
+          {
+            "title": "Polish Warsaw Equity Group Leads €5M Series A",
+            "body": "The Polish Warsaw Equity Group has led a €5 million Series A investment round alongside Porsche Ventures, focusing on expanding electric vehicle charging infrastructure. This investment highlights the growing interest in sustainable technology within the region.",
+            "source_urls": [
+              "https://therecursive.com/warsaw-equity-group-porsche-ventures-charge-investment-ev-charging/"
+            ],
+            "source_count": 1,
+            "item_type": "investment",
+            "relevance_score": 8
+          }
+        ]
+      },
+      {
+        "title": "Startup Internationalisation Insights",
+        "items": [
+          {
+            "title": "Slovenia's Strategy for Startup Internationalisation",
+            "body": "Slovenian startups are increasingly looking towards the CEE-DACH corridor for international traction, with Vienna being a key market. This strategic focus aims to leverage familiar regulatory frameworks and overlapping investor networks.",
+            "source_urls": [
+              "https://therecursive.com/slovenia-startup-ecosystem-internationalisation-viennaup-2026/"
+            ],
+            "source_count": 1,
+            "item_type": "news",
+            "relevance_score": 7
+          }
+        ]
+      },
+      {
+        "title": "AI and Engineering in CEE",
+        "items": [
+          {
+            "title": "Google Veteran Joins Bulgarian AdScout",
+            "body": "A former Google executive has joined Bulgarian startup AdScout to address challenges in the advertising sector, emphasizing the strengths of CEE in applied engineering and product development.",
+            "source_urls": [
+              "https://therecursive.com/google-veteran-joins-bulgarian-adscout-to-tackle-trust-tax/"
+            ],
+            "source_count": 1,
+            "item_type": "news",
+            "relevance_score": 6
+          }
+        ]
+      }
+    ],
+    "generated_at": "2026-04-24T08:39:12.392674+00:00",
+    "status": "complete",
+    "mode": "incremental",
+    "funnel": {
+      "aim_id": "cee-founder-media",
+      "digest_id": "phase2-run2-incremental",
+      "mode": "incremental",
+      "ingested": 1,
+      "source_stats": {
+        "https://techcrunch.com/feed/": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://news.ycombinator.com/rss": {
+          "listed": 8,
+          "skipped_seen": 7,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://arxiv.org/rss/cs.AI": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://www.theverge.com/rss/index.xml": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://venturebeat.com/feed/": {
+          "listed": 7,
+          "skipped_seen": 7,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://www.sec.gov/news/pressreleases.rss": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://cc.cz/feed/": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://www.forbes.cz/feed/": {
+          "listed": 8,
+          "skipped_seen": 7,
+          "extracted": 1,
+          "used": 1
+        },
+        "https://www.lupa.cz/rss/clanky/": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        },
+        "https://therecursive.com/feed/": {
+          "listed": 8,
+          "skipped_seen": 8,
+          "extracted": 0,
+          "used": 0
+        }
+      },
+      "chunked": 4,
+      "embedded": 4,
+      "upserted": 4,
+      "semantic_dups": 0,
+      "retrieved": 20,
+      "sections": 3,
+      "items": 4
+    }
+  }
+}

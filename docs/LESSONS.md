@@ -80,3 +80,15 @@ Rule: before adding rerank, verify the pool has at least ~3× as many distinct o
 
 **What to do about it:** Don't bite the prompt size to chase `<10 s` — the cost comes straight out of digest quality (fewer chunks in context = fewer sourcing options for the LLM). Reframe the demo script to lead with the 5× delta, not the absolute wall-clock. If a later phase wants to squeeze more, the lever is **prompt caching of the Aim + static system message** (saves input tokens + some TTFT) or the **`reasoning: "low"` hint** on newer models, not chunk-count reduction.
 
+## L4. Tier 3 semantic dedup catches arxiv more than news
+
+**Phase:** 2
+
+**What surprised me:** The first Tier-3-enabled `force` run flagged **9/623 chunks** as semantic dupes. 7 of the 9 were arxiv abstracts matching *other* arxiv abstracts at cosine 1.000 — arxiv's `cs.AI` RSS publishes abstracts with boilerplate phrasing ("We propose…", "In this paper we show…") that embeds near-identically. The other 2 were within-TechCrunch front-matter (shared editor-note preamble bytes across two articles). **Zero** semantic dupes across *news sources* (cc.cz vs forbes.cz vs techcrunch), which was the case D13's interview note sold on ("AP story rewritten by Reuters + WSJ with same facts") — the 10-source demo pool doesn't have that failure mode at volume.
+
+**Context:** `SEMANTIC_DUP_THRESHOLD = 0.93` fired hardest on: two arxiv papers whose chunk-0 = title + abstract + DOI boilerplate; one TechCrunch pair sharing a newsletter-subscription footer chunk. All legit catches — the boilerplate really is the same content — but it's not the "cross-outlet event coverage" story the demo implies.
+
+**What to do about it:** Two framing tweaks for the demo:
+- **Lead with the cheap-talk version of the decision**: "Tier 1 is the workhorse — 77/78 skips in run 2. Tier 3 is the *insurance* that catches what Tier 1 can't see, mostly arxiv boilerplate in the current source mix. The 'AP rewritten by Reuters' story needs a denser wire-service source mix to show up in numbers."
+- **Don't oversell** Tier 3 in the DECISIONS interview note without this caveat — D13 currently implies cross-outlet rewrites; at the current source mix that's talked-about, not measured. Append a cross-ref to this lesson on D13.
+

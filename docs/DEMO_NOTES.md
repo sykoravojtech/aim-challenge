@@ -28,13 +28,17 @@ Phase 1 funnels (via FastAPI + BackgroundTask, CEE Aim, `data/compare/phase1_api
 - **`mode=incremental`** (after force; Tier 1 seen-set now wired via `save_raw_articles`): `INGESTED=0 (skipped_seen=78) → RETRIEVED=20 → SECTIONS=3 / ITEMS=4` in ~20 s.
 - **`mode=cached`** (skip ingest entirely, retrieve against live Pinecone): `RETRIEVED=20 → SECTIONS=2 / ITEMS=4` in ~17 s. The 5× delta vs `force` is the demo story — see [LESSONS L3](LESSONS.md#l3-modecached-latency-is-llm-generate-dominated-not-pipeline-dominated).
 
+Phase 2 funnels (`data/compare/phase2_dedup.json`, CEE Aim, two back-to-back runs):
+- **Run 1, `mode=force`** (Tier 3 semantic dedup now gates upsert): `INGESTED=78 → CHUNKED=623 → EMBEDDED=623 → UPSERTED=614 (SEMANTIC_DUPS=9) → RETRIEVED=20 → SECTIONS=3 / ITEMS=4` in ~124 s. The 9 Tier-3 catches were mostly arxiv-abstract boilerplate, not cross-outlet rewrites — see [LESSONS L4](LESSONS.md#l4-tier-3-semantic-dedup-catches-arxiv-more-than-news).
+- **Run 2, `mode=incremental`** (Tier 1 URL md5 on top of run 1's seen-set): `INGESTED=1 (skipped_seen=77) → CHUNKED=4 → UPSERTED=4 → RETRIEVED=20 → SECTIONS=3 / ITEMS=4` in ~13 s. **The demo line: 77/78 articles skipped by Tier 1, Digest still emits in 13 s.** The one new ingest was a Forbes.cz entry published between the two runs — proof that `incremental` tracks live feeds, not a failure.
+
 | Verb | Module | Status | One-liner for demo |
 |---|---|---|---|
-| ingest | `pipeline/ingestion.py::ingest_all_sources` | ✅ Phase 0–1 | 10 RSS feeds behind a `RSSConnector` in a `REGISTRY` dict — adding a Mexican-state-institutions source is one `@register("mexico_gov")` line, not a pipeline rewrite. |
+| ingest | `pipeline/ingestion.py::ingest_all_sources` | ✅ Phase 0–2 | 10 RSS feeds behind a `RSSConnector` in a `REGISTRY` dict — adding a Mexican-state-institutions source is one `@register("mexico_gov")` line, not a pipeline rewrite. **Phase 2**: tenacity retries on `_parse_feed` + `_fetch_url` (3 attempts, 1→8 s expo), per-source + per-article try/except. One flaky feed does not kill the run; one bad article does not kill the source. |
 | extract | `pipeline/ingestion.py::RSSConnector.fetch` | ✅ Phase 0 | `trafilatura` on the article URL, fall back to RSS `<content:encoded>` when 403 — **saved 15/77 docs on SEC + VentureBeat this morning.** |
 | chunk | `pipeline/processing.py::chunk_articles` | ✅ Phase 0–1 | LangChain `RecursiveCharacterTextSplitter(800, overlap=100)`, title prepended so every chunk is self-identifying at rerank time. |
 | embed | `pipeline/embedding.py::embed_texts` | ✅ Phase 0–1 | `text-embedding-3-small`, batched ≤100. Swap path to VertexAI `text-embedding-004` with `task_type=RETRIEVAL_DOCUMENT` is one file. |
-| store | `pipeline/vector_store.py::upsert_chunks` | ✅ Phase 0–1 | Pinecone serverless, `dim=1536`, chunks tagged with `region` + `source_type` at ingest — **these are filter dimensions, not prompt content.** |
+| store | `pipeline/vector_store.py::upsert_chunks` | ✅ Phase 0–2 | Pinecone serverless, `dim=1536`, chunks tagged with `region` + `source_type` at ingest — **these are filter dimensions, not prompt content.** **Phase 2**: Tier 3 semantic dedup — per-chunk `top_k=1` query with `article_id $ne` filter, skip if cosine ≥0.93, logged as `semantic_dup of {id}`. Tier 1 URL-md5 seen-set lives in `pipeline/storage.py::get_seen_article_ids`. |
 | retrieve | `pipeline/retrieval.py::retrieve_relevant_chunks` | ✅ Phase 0–1 | Hybrid retrieval: `{"region": {"$in": [*aim.regions, "Global"]}}` as a Pinecone filter *before* ANN. Global always OR'd in so Global-tagged pieces still serve regional Aims. |
 | rerank | `pipeline/retrieval.py::rerank_chunks` | ⏳ Phase 4 | `gpt-4o-mini` JSON call with full Aim in the prompt — 15× cheaper than `gpt-4o` for structured rerank. |
 | generate | `pipeline/report.py::generate_digest` | ✅ Phase 0–1 | `gpt-4o-mini`, `response_format={"type":"json_object"}`, `temperature=0.3`. **LLM picks 2–5 section titles per run** — Phase 1 API run chose "Recent Fundraising Activities / Startup Internationalisation Efforts / Insights from Industry Leaders" for the CEE Aim. |
@@ -47,6 +51,7 @@ Pick the highest-signal entries from [DECISIONS.md](DECISIONS.md) to foreground.
 
 - **Aim's structured fields are Pinecone filter dimensions, not prompt content.** *"Regions aren't prompt decoration — chunks carry `region` + `source_type` metadata at ingest, and retrieval applies `{"region": {"$in": [*aim.regions, "Global"]}}` before ANN. Hybrid retrieval — structured filter ∩ semantic search. The rerank can't overrule what was never retrieved."* Wired since Phase 0 (10 lines of cost, strongest RAG signal in the build).
 - **Walking skeleton first.** All 8 verbs ran end-to-end in one script before anything got polished (see `scripts/run_pipeline.py`). Funnel metrics at every stage, compare artefacts committed for every quality-changing phase — the interview exhibit for "did this change help, and by how much?"
+- **Three-tier dedup, cheap-to-expensive; implemented the two whose plumbing is free.** *"Tier 1 is exact URL md5 — catches crawl duplicates, the workhorse (77/78 skips on the re-run). Tier 3 is embedding cosine ≥ 0.93 on a different `article_id` — free because we already have the embedding, one extra Pinecone query per upsert. Tier 2 (MinHash LSH) stays talked-about — it's the add I'd wire when daily new-chunk volume makes per-upsert semantic dedup too expensive, somewhere above 100k docs/day."* See [D13](DECISIONS.md#d13-dedup--tier-1--tier-3-live-tier-2-minhash-talked-about).
 - _append as Phases 1+ land with stronger conviction_
 
 ---
@@ -80,7 +85,7 @@ _Append new cuts below as they happen._
 
 Seed candidates (expand + sharpen as the day goes):
 
-- **Full dedup tier 2+3** — `pipeline/dedup.py` `Deduper.minhash_dedup()` + `.semantic_dedup()`, ~80 LOC. Tier 1 URL-hash is live; tiers 2/3 are scaffolded.
+- **Tier 2 MinHash LSH dedup** — `pipeline/dedup.py::minhash_dedup` with `datasketch` (`num_perm=128`, `b=16`, `r=8` for Jaccard ≈ 0.85), ~30 LOC. Tier 1 (URL md5) + Tier 3 (embedding cosine ≥ 0.93) are both live in Phase 2; Tier 2 is the add for when daily new-chunk volume makes per-upsert Pinecone queries too costly (above ~100k docs/day). See [D13](DECISIONS.md#d13-dedup--tier-1--tier-3-live-tier-2-minhash-talked-about).
 - **PodcastConnector** — `pipeline/sources/podcast.py` via registry, ~120 LOC (yt-dlp + Whisper batch).
 - **Real Pub/Sub fan-out** — topic-per-stage + DLQ, ~60 LOC + GCP config.
 - **BigQuery VECTOR_SEARCH** as an alternate `VectorStore` implementation — ~50 LOC swap in `pipeline/vector_store.py`.
@@ -100,6 +105,7 @@ Seed risks (upgrade with specifics as they're encountered):
 - **LLM output-shape drift** — mitigated by `safe_llm_json()` ([LESSONS § LLM output-shape handling](LESSONS.md)); still the single most likely production-break.
 - **Pinecone single-tenancy** — one global index, metadata-filtered per Aim. Fine at demo scale, needs per-namespace partitioning at multi-tenant scale.
 - **No observability beyond stdout funnel metrics** — demo-OK, prod-blocker.
+- **Tier 3 semantic dedup's false-positive surface is bigger than the note implies.** 7/9 Phase-2 catches were arxiv-abstract boilerplate matching other arxiv abstracts at cosine 1.000 — legit dupes of the *content we have*, but not the cross-outlet rewrite story. On a denser wire-service source mix the signal would shift; today it's mostly insurance against boilerplate. See [LESSONS L4](LESSONS.md#l4-tier-3-semantic-dedup-catches-arxiv-more-than-news).
 - _append as real fragility shows up during runs_
 
 ---

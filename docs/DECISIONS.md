@@ -229,6 +229,8 @@ Append new entries at the bottom. Mark superseded rather than deleting.
 
 **Interview note:** "Three tiers, cheap-to-expensive: exact URL hash catches crawl duplicates, MinHash LSH catches republished press releases, embedding cosine catches rewrites. I wired Tier 1 and Tier 3 — Tier 3 is free because we already have the embedding — and documented MinHash as the add I'd wire when daily new-chunk volume makes semantic dedup too expensive per upsert. That's above ~100k docs/day."
 
+**Update (Phase 2 first measured run, see [LESSONS L4](LESSONS.md#l4-tier-3-semantic-dedup-catches-arxiv-more-than-news)):** Tier 1 is the workhorse (77/78 hits on the re-run). Tier 3 fired on **9/623 chunks** on the first force-run — but ~80% of those were arxiv-abstract boilerplate matching other arxiv abstracts, not the cross-outlet rewrite story the original note sold. Don't oversell Tier 3 in the demo without this qualifier; it's *insurance* that the plumbing exists, not a measured dominant signal at the current source mix.
+
 ---
 
 ## D14. Vanilla HTML/CSS/JS frontend, no framework
