@@ -50,17 +50,23 @@ Rule: before adding rerank, verify the pool has at least ~3× as many distinct o
 
 ## Today's lessons (append as they happen)
 
-<!--
-Template:
+## L1. Three of the ten ROADMAP RSS feeds were silently empty at 08:30
 
-## L{N}. Short title
+**Phase:** 0
 
-**Phase:** {phase number}
+**What surprised me:** `federalregister.gov` SEC search.rss (302 → non-RSS payload, `bozo=1`, 0 entries), `hn.cz/feed` (404 HTML), and `euvc.com/feed` (HTML-not-XML, `bozo=1` undefined entity) all return `feed.entries=[]` with no exception — exactly the silent-empty trap from the standing idiom. Caught by the pre-flight smoke-test subagent, so cost was 0 min; without the smoke test these would have silently produced 0 chunks each for regions/source_types that matter.
 
-**What surprised me:** …
+**Context:** `ROADMAP § Source plan` hardcodes 10 feeds; 3 were dead on arrival. The replacements shipped in `scripts/run_pipeline.py` are: `sec.gov/news/pressreleases.rss` (US regulatory), `lupa.cz/rss/clanky/` (Czechia news), `therecursive.com/feed/` (CEE news). The replacements give 4 Czech/CEE feeds, keeping the two demo Aims' pools balanced.
 
-**Context:** …
+**What to do about it:** Before trusting any hardcoded feed list, run a parallel smoke-test (one script, 10 URLs, print `status/entries/bozo` per feed). Any feed that returns `entries=[]` *at all* is dead to us — don't debug, swap. Keep `therecursive.com`, `lupa.cz`, `sec.gov/news/pressreleases.rss` as known-good CEE/US substitutes.
 
-**What to do about it:** …
+## L2. trafilatura 403s on SEC + VentureBeat are invisible unless RSS-summary fallback is wired
 
--->
+**Phase:** 0
+
+**What surprised me:** 15/77 `trafilatura.fetch_url` calls hit 403 (all 8 SEC press-release pages, all 7 VentureBeat article pages). With the RSS-`entry.summary` fallback already in `RSSConnector.fetch`, every one of those 15 still produced a usable doc — per-source `used` counts matched `listed` — so a glance at the funnel line would miss the entire failure class.
+
+**Context:** SEC returns 403 to any generic python-requests User-Agent regardless of the one declared to feedparser; VentureBeat seems to Cloudflare-block non-browser UAs on article pages but serves a generous `<content:encoded>` in the feed. Both are saved by the ≥200-char RSS-summary fallback.
+
+**What to do about it:** Log per-source `fetched_via={trafilatura|rss_summary}` counts, not just `used`. A source whose docs all come from `rss_summary` is fine for a skeleton but risky at scale (RSS summaries truncate; chunks carry less signal than full extractions). Keep watching the per-source fetch-method split when Phase 2 wires the real tenacity retries.
+

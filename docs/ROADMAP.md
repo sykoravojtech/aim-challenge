@@ -107,6 +107,18 @@ Smoke-test each feed with `feedparser.parse(url).entries` before committing — 
 
 ---
 
+## Subagent parallelization policy
+
+Single Claude session throughout. No git worktrees — merge thrash beats time savings at this scope. Parallelism comes from **fanning out subagents in one message** whenever the work touches different files.
+
+- **Fan out when:** independent files, <5 min scaffolding each, or pure standalone tools (e.g. `scripts/compare_digests.py`). Spawn N subagents in one message, wait for all, main session integrates.
+- **Stay solo when:** wiring the integration (Phase 0), debugging a live pipeline, eyeballing compare artefacts. The "what surprised me" loop feeds LESSONS.md — don't delegate it.
+- **How to brief a subagent:** file path, exact spec from this roadmap / ARCHITECTURE.md, acceptance criterion, "return the file contents, don't commit." Main session reviews + commits.
+
+Per-phase guidance is inline under **Subagent fan-out:** in each phase below.
+
+---
+
 ## Phase 0 — Walking skeleton (60–90 min) ⭐ highest priority
 
 **Goal:** One Python script that runs the entire pipeline end-to-end for **one** hardcoded Aim (pick the CEE one — more concrete, faster smoke test) and prints a Digest JSON.
@@ -132,6 +144,8 @@ No FastAPI. No dedup. No rerank. No dynamic sections yet (flat digest OK if the 
 - [ ] `print(json.dumps(digest, indent=2))`
 
 **Done when:** `uv run python scripts/run_pipeline.py` prints a valid Digest JSON whose `sections[*].items[*].source_urls[*]` are real, ingested article URLs.
+
+**Subagent fan-out:** one early only — single message, parallel `WebFetch` (or one Explore agent) to smoke-test all 10 RSS URLs and report which have non-empty `.entries` with body content. Saves ~10 min vs serial validation and catches silent-empty feeds (see LESSONS). Everything else in Phase 0 is solo — integration debugging is where *you* learn the shape, and the HoE will ask "what surprised you."
 
 **Save baseline:** `data/compare/phase0_walking_skeleton.json`. Commit.
 
@@ -171,6 +185,13 @@ Binary `force` flags want to be three-mode the moment there's a UI (demo iterati
 
 **Done when:** full curl flow (POST /aim → POST /aim/{id}/digest?mode=force → GET /digest/{id}) returns a Digest with ≥2 dynamic sections. `cached` mode completes in <10 s after a previous run.
 
+**Subagent fan-out:** spawn 2 in parallel, main session refactors in-place:
+- **A → `models/schemas.py`**: Pydantic v2 models for `Aim`, `AimCreate`, `DigestItem`, `DigestSection`, `Digest` per [PRODUCT_NOTES.md](PRODUCT_NOTES.md).
+- **B → `pipeline/storage.py`**: JSON CRUD for `data/aims/*.json` + `data/digests/*.json` (save/get/update/delete/list_for_user + save_digest/get_digest).
+- **Main session**: split `scripts/run_pipeline.py` into `pipeline/{ingestion,processing,embedding,vector_store,retrieval,report}.py`, write `main.py` FastAPI + BackgroundTask + three-mode trigger.
+
+Save ~20 min. Main session integrates (imports, job_status dict, endpoint wiring) and runs the curl smoke test.
+
 **Compare artefact:** `data/compare/phase1_api_version.json` (pipe through FastAPI, not script).
 
 ---
@@ -194,6 +215,13 @@ Binary `force` flags want to be three-mode the moment there's a UI (demo iterati
 
 **Done when:** second run of the same Aim: 0 new articles ingested (Tier 1), 0 new chunks upserted (Tier 3), full Digest still emitted from cached Pinecone content.
 
+**Subagent fan-out:** spawn 3 in parallel — each touches a different file:
+- **A → Tier 1 URL md5** in `pipeline/storage.py` (`save_raw_articles` with `article_id=md5(url).hexdigest()`, `get_seen_article_ids()` union).
+- **B → Tier 3 semantic dedup** in `pipeline/vector_store.upsert_chunks` (per-chunk `top_k=1` query with `article_id` $ne filter; skip if `score>0.93`, log `semantic_dup of {id}`).
+- **C → tenacity + per-source try/except** in `pipeline/ingestion.py` (`@retry(stop_after_attempt(3), wait_exponential(...))` on `feedparser.parse` + `trafilatura.fetch_url`; convert `bozo_exception` to raised exception first).
+
+Main session reviews diffs, wires `seen_ids` into `ingest_all_sources`, runs second-run verification. Saves ~15 min.
+
 ---
 
 ## Phase 3 — Frontend (60 min)
@@ -215,6 +243,12 @@ Tokens in [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md). Vanilla HTML/CSS/JS, no framewor
 
 **Done when:** opening `http://localhost:4444` lets you create an Aim, pick a mode, click Generate, watch the Digest render — no curl involved.
 
+**Subagent fan-out:** mostly solo — frontend is one coherent look-and-feel iteration; splitting HTML/CSS/JS across subagents risks inconsistent spacing/naming. One useful fan-out at start:
+- **A → `static/style.css` scaffold**: emit CSS custom properties from [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) tokens (brand purple, Inter, radii, spacing scale) and base resets. Main session builds `index.html` + `app.js` against that palette.
+- **Opportunistic parallel task**: while the frontend is iterating locally, dispatch a subagent to write `scripts/compare_digests.py` (Phase 4 deliverable, fully independent). Comes back done; zero critical-path cost.
+
+Open the page in the browser yourself — don't delegate the visual check.
+
 ---
 
 ## Phase 4 — Rerank + MMR + compare tooling (45 min)
@@ -231,11 +265,20 @@ Tokens in [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md). Vanilla HTML/CSS/JS, no framewor
 
 **Done when:** `uv run python scripts/compare_digests.py data/compare/phase2_dedup.json data/compare/phase4_full.json` prints a readable diff table; finding recorded in LESSONS.md.
 
+**Subagent fan-out:** spawn 3 in parallel on independent deliverables:
+- **A → `scripts/compare_digests.py`** (skip if already done in Phase 3 opportunistic slot): section count, item count, unique URLs, distinct hosts, region coverage, item_type mix, URL Jaccard. Pure analysis tool, no pipeline deps.
+- **B → `retrieval.rerank_chunks`**: `gpt-4o-mini` JSON call, full Aim in prompt, returns `{scores:[int]}`, defensive shape via `safe_llm_json` (truncate/fence-strip/fail-on-short). Fallback to vector order on hard parse fail.
+- **C → `retrieval.mmr_diversify`**: `λ=0.7` over Pinecone-returned embeddings, `top_k=10`.
+
+Main session wires `retrieve(top_k=30) → rerank(top_n=15) → mmr → generate(top_10)` and captures the four 2×2 snapshots. Do **not** delegate the eyeball review of the compare table — surprises go in LESSONS.md in your own words.
+
 ---
 
 ## Phase 5 — GCP swap (90–180 min, conditional)
 
 **If the HoE blesses it OR if Phases 0–4 land by 15:00, do 5a–5c minimum.** Everything swaps behind `storage.py`/`vector_store.py`/`embedding.py`; never break local fallback.
+
+> 🛑 **Branch-gate before starting Phase 5.** All earlier phases commit straight to `main` (one-day challenge — branches per feature are pure tax). Phase 5 is the exception: highest blast-radius change of the day, conditional, 90–180 min. Before any 5a code, **stop and ask the user** to confirm cutting `phase-5-gcp` off `main`. If GCP eats the afternoon, `git checkout main` and demo the local pipeline at 16:00 with zero damage. Do **not** auto-branch — explicit user accept required at execution time.
 
 ### Priority order (stop when time runs out)
 
@@ -245,6 +288,13 @@ Tokens in [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md). Vanilla HTML/CSS/JS, no framewor
 - **5d. Typed digest items (30 min)** — per-`item_type` structured fields (`quote`+`attribution`, `entity`+`amount`). Matches live Digest shape from [PRODUCT_NOTES](PRODUCT_NOTES.md).
 - **5e. GCS bronze (15 min)** — mirror `data/raw/*.json` to `gs://aim-raw-articles/raw/{date}/{job_id}.json`. Trivial after 5b.
 - **5f. Cloud Run deploy (20 min)** — Dockerfile + `gcloud run deploy`. Pure polish. Skip unless everything else is rock-solid and the demo has a cached fallback to localhost: a cold-starting Cloud Run URL timing out mid-demo is worse than `uvicorn --port 4444`.
+
+**Subagent fan-out:** 5a/5b/5c touch different files (`storage.py` / `ingestion.py` / `embedding.py`) — ideal fan-out shape. Spawn 3 in parallel *after* the `phase-5-gcp` branch is cut:
+- **A → 5a Firestore** in `pipeline/storage.py`: dual-write JSON + Firestore behind an env flag; flip reader last. Never break local fallback.
+- **B → 5b BigQuery** in `pipeline/ingestion.py` write path: `bigquery_client.insert_rows_json("aim_pipeline.raw_articles", rows)` after `save_raw_articles`. Local JSON remains dedup truth.
+- **C → 5c VertexAI** in `pipeline/embedding.py`: `text-embedding-004` with `task_type=RETRIEVAL_DOCUMENT|RETRIEVAL_QUERY`; recreate Pinecone index at `dim=768` OR gate behind a provider flag per run.
+
+Main session merges sequentially, running the full pipeline after each swap lands. 5d/5e/5f are solo (typed items needs product judgement; GCS + Cloud Run are single-file, trivial).
 
 ---
 
@@ -303,8 +353,8 @@ Weak candidates hand-wave on "what's next"; strong ones name modules and line co
 
 Tick as each lands:
 
-- [ ] Pre-Phase-0 pre-flight (keys, credentials, Pinecone index)
-- [ ] Phase 0 — Walking skeleton
+- [x] Pre-Phase-0 pre-flight (keys, credentials, Pinecone index)
+- [x] Phase 0 — Walking skeleton
 - [ ] Phase 1 — FastAPI + CRUD + three-mode trigger
 - [ ] Phase 2 — Dedup (Tier 1 + Tier 3) + retries
 - [ ] Phase 3 — Frontend
