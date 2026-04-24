@@ -28,8 +28,11 @@ The point isn't that every phase beat the previous — it's that **every claim i
 | phase2 dedup            | —    | —    | —    | —    | —    | 0 (skipped) |
 | phase4 rerank only      | 0.33 | 1.00 | 3.33 | 4.00 | 4.67 | 3 |
 | phase4 full (MMR)       | 0.44 | 1.00 | 3.25 | 3.75 | 4.50 | 4 |
+| **phase6g_fix** (article-dedup retrieve) | 0.22 | 1.00 | **3.50** | 3.75 | 4.25 | 4 |
 
 Precision is 1.00 everywhere because every digest URL present in the golden set is a labelled positive — no false positives surfaced. Recall is the number doing real work.
+
+**phase6g_fix honest read on CEE.** The fix was primarily aimed at saas (where recall was 0.00 for Pinecone-chunk-duplication reasons). On CEE it's a wash-to-slight-regression: recall 0.44 → 0.22, relevance 3.25 → 3.50. Why: CEE had less chunk-duplication than saas (no single article dominated the pool), so the old top-30 chunks naturally mapped to ~10 multi-chunk articles, and the rerank got reinforced signal per article. Post-fix, the same 30 slots hold 30 distinct single-chunk articles — wider diversity, less context-per-article at rerank time, a different mix survives to the digest. It's the diversity-vs-coverage trade one more time, now visible at the retrieve stage rather than at MMR. Net-net for the demo: saas moved from broken to defensible; CEE moved from good to good-different. Trade-off worth making because the pipeline now behaves consistently across Aims (a 126-chunk hot-article can't monopolise either pool). Raising both recalls together is a Tier-2 MinHash (6B) job.
 
 ## What the numbers actually say
 
