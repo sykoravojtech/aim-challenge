@@ -20,6 +20,10 @@ credentials.json
 data/raw/
 data/aims/
 data/digests/
+# Eval runs are timestamped + regenerable; data/evals/SUMMARY.md is the curated
+# exhibit and stays committed. Ignore the per-run JSON + Markdown traces.
+data/evals/run_*.json
+data/evals/run_*.md
 
 # Scratch / reference material
 tmp/
