@@ -117,3 +117,31 @@ Rule: before adding rerank, verify the pool has at least ~3× as many distinct o
 
 **Demo implication today:** use `cached` mode for the live Cloud Run demo. It's the read-only path — retrieve from existing Pinecone state → rerank → generate, 30 s cold-start, no cross-region upsert loop. `incremental` + `force` still work, just slow; show them on the laptop if asked, point at this lesson as the named "what's next with an hour" bullet.
 
+## L7. gpt-4o-mini rerank degrades silently above ~80 chunks
+
+**Phase:** 6H
+
+**What surprised me:** Raising `per_article_cap` from 1 → 3 fed **119 chunks** into rerank, and gpt-4o-mini consistently failed to produce a valid `{"scores": [...]}` JSON response. Output either truncated mid-array at char ~28K ("line 4096 column 7") or ran away into verbose multi-line formatting. The original `safe_llm_json` path then hit `LLMShapeError` and fell back to `chunks[:top_n]` in **vector order** — which silently wipes the entire rerank stage. Digest looked OK on surface (no exception, items generated) but was effectively un-reranked.
+
+**Context:** The prompt asks for one integer 0–10 per chunk. With 40 chunks that's trivially in-distribution. At 80 chunks the model sometimes drops or appends items (over/under by 1–3, which `safe_llm_json` already handles). At 119 the model consistently either truncates or inserts commentary/whitespace until `max_tokens` cuts it mid-array.
+
+**What to do about it:**
+- **Cap rerank input size.** `per_article_cap=2` (~80 chunks) is the stable operating point. `per_article_cap=3` is tested-bad even with recovery — the padded-score mean drops to ~2.9 vs ~5.2 fully-scored.
+- **Don't silent-fallback to vector order.** Added `_recover_scores` in `pipeline/retrieval.py`: tries JSON parse, then regex-extracts ints from `"scores": [ ... `, pads with neutral=5 up to `expected_len`. Surfaces "rerank recovered with padding" at WARN level so the failure is visible instead of masked.
+- **Explicit `max_tokens` on the rerank call.** `min(2000, 200 + 12 * len(chunks))` — hard ceiling against runaway generation. Model can still drop scores, but can't emit 28KB of noise.
+- **Pinecone reranker (`cohere-rerank-3.5` / `bge-reranker-v2-m3`) is the real fix.** Cross-encoder models return a deterministic score-per-pair — no LLM shape-drift at all. Named next-step in DEMO_NOTES § 5; ~30-LOC swap in `rerank_chunks`.
+
+**Demo line:** *"Raising chunks-per-article into rerank exposed that gpt-4o-mini silently degrades above ~80 inputs — valid-looking JSON but missing scores. I added regex-based recovery so the failure is visible (warn log + padded neutrals) instead of silent-fallback to vector order. Right fix is swapping to a cross-encoder reranker — that's the 30-LOC next step."*
+
+## L8. SEC + Congress.gov feeds return stub text; saas recall is ingest-bound
+
+**Phase:** 6H
+
+**What surprised me:** Ran a corpus profiler across `data/raw/*.json` (189 docs across 7 batches) looking for why saas-ai-legislation recall stays stochastic at 0.00–0.17 across every retrieval change we've shipped. The numbers: **news median 3.3KB, p90 10KB. Research median 2.1KB. Regulatory (SEC EDGAR) median 253 characters. Legislation (Congress.gov via GovTrack) median 384 characters.** The sources the saas Aim most depends on ingest as ~one-sentence summaries, not full filings or bill text.
+
+**Context:** `RSSConnector` + trafilatura handles HTML news well. SEC EDGAR's press-release RSS returns a headline + 1–2 sentence summary; the actual 10-K/8-K body lives behind a separate "filing index" URL in the submissions JSON. Congress.gov/GovTrack's summary field is a one-paragraph abstract, with full bill XML at a separate endpoint. We're not hitting those endpoints. Consequence: retrieval can't rank what isn't ingested — multi-chunk context, semantic clustering, better rerankers all cap at "best possible ranking of one-sentence stubs."
+
+**What to do about it:** Don't tune retrieval for saas further until ingest is fixed. The real fix is **~100 LOC across `pipeline/ingestion.py::SECConnector.fetch_text` + `CongressConnector.fetch_text`** — follow SEC's submissions-JSON → filing-index chain to pull 10-K/8-K body text; call Congress.gov's `/bill/{congress}/{type}/{number}/text` endpoint to pull bill XML. Re-chunk, re-upsert, re-eval. Named next-step in DEMO_NOTES § 5.
+
+**Demo line:** *"When the 6H retrieval fix lifted CEE but not saas, I dropped down and profiled the corpus. SEC feed median: 253 characters. Congress feed median: 384. Multi-chunk retrieval can't help what was never ingested. That's a one-day connector fix, not a retrieval problem — it's the #1 'what's next' bullet because it's the saas ceiling in a literal sense."*
+

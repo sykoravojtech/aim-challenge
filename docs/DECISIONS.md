@@ -266,3 +266,28 @@ Append new entries at the bottom. Mark superseded rather than deleting.
 **Cost if reversed:** per-endpoint `user: User = Depends(current_user)` + replace `user_id` fields with `user.id`. Medium-low.
 
 **Interview note:** "Deliberately out of scope. Data shape is multi-tenant; auth is a one-day follow-up once Phase 5a moves aims to Firestore — JWT dependency + per-user Pinecone namespace. Putting auth on top of local-JSON single-tenant storage would be theatre."
+
+---
+
+## D16. Phase 6H — deterministic chunk_id + per_article_cap=2 in retrieval
+
+**Decision:** Two changes shipped together in commit `05516c5`:
+1. `pipeline/processing.py::chunk_articles` — `chunk_id = f"{article_id}:{chunk_index}"` instead of `uuid.uuid4().hex`.
+2. `pipeline/retrieval.py::collapse_chunks_by_article` now accepts `per_article_cap` (default 1) and `sort_key`; `main.py` sets `PER_ARTICLE_CAP=2` at retrieve and adds a post-rerank collapse-to-1-per-article with `sort_key="rerank_score"` before MMR.
+
+**Why:**
+- **Deterministic chunk_id** closes the root cause of the 4,122-vector Pinecone bloat cleaned up in 6G. `mode=force` re-scrapes the same URL and re-upserts chunks; with UUID ids every run wrote fresh duplicates. Pinecone upsert is idempotent by id, so `article_id:chunk_index` means re-runs overwrite instead of duplicating. Fixed the *cause* after 6G fixed the *symptom*.
+- **per_article_cap=2** reverses a CEE recall regression introduced by 6G's single-chunk collapse. News median = 3.3KB / p90 = 10KB = 4+ chunks each, and multi-chunk articles lost reinforced rerank signal when only the top-scored chunk survived. Lifting the cap to 2 chunks/article pre-rerank preserves that context; the post-rerank collapse keeps the final digest 1-item-per-story. Measured: **CEE recall 0.22 → 0.44**.
+- **Why not cap=3?** cap=3 = 119 chunks into rerank, which consistently broke gpt-4o-mini (runaway generation, JSON truncated at char ~28K, fallback to vector order). cap=2 (~80 chunks) is the empirical sweet spot. Measured in `data/compare/phase6h_cap3_*.json`.
+- **Rerank soft-recovery** (`pipeline/retrieval.py::_recover_scores`): when the LLM drops/mangles scores, regex-extract partial scores and pad with neutral=5 rather than falling back to raw vector order. Pure safety net; vector-order-fallback wipes the strongest quality stage.
+
+**Alternatives rejected:**
+- **Pre-upsert `top_k=1 article_id $eq` query.** Works but adds one Pinecone query per chunk — deterministic ids are free.
+- **Full retrieval-time semantic clustering** (move Tier 3 from upsert to retrieve, expose `source_count` as a rerank boost — the strongest "coverage = editorial importance" signal in news aggregation). Architecturally cleaner but a 60–90 min refactor across `vector_store.py` + `retrieval.py` + `report.py` + frontend. Deferred: named next-step in DEMO_NOTES § 5.
+- **cap=3 with soft-recovery padding.** Tested empirically — produces mean rerank score 2.93 (filler-padded) vs cap=2's 5.20 (fully LLM-scored). Recovery survives the failure but dilutes quality.
+
+**Cost if reversed:** revert three edits (`processing.py`, `retrieval.py`, `main.py`); re-run Pinecone cleanup. Low.
+
+**Interview note:** "Two changes, same commit. First: chunk ids go from UUID to `article_id:chunk_index` — deterministic, so re-ingesting the same URL overwrites Pinecone vectors instead of duplicating them. Root cause fix for the 4,122-vector bloat we found in 6G. Second: I lift per-article chunk count from 1 to 2 going into rerank, then collapse back to 1 after — long news articles keep multi-chunk context, user sees one digest item per story. CEE recall went 0.22 → 0.44. Saas didn't move because SEC/Congress ingest is stub-text (253 and 384 chars median) — that's the real saas ceiling, which is next-day work on ingest connectors, not retrieval."
+
+**Trade-off to own:** saas relevance dipped ~4.5 → ~3.3 across two reruns. Multi-chunk expansion has no value for SEC stubs (nothing to chunk into). Per-source `per_article_cap` tuning (news=3, regulatory=1) is filed as next-day work in DEMO_NOTES § 5.
