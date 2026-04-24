@@ -335,16 +335,58 @@ function refreshRowStatus(row, aimId) {
 
 // ---------- Digest rendering ----------
 
+function renderRunningCard(aim, mode, stage, elapsedS, funnel) {
+  const stageLabel = stage === "queued" ? "queued…" : `${stage}…`;
+  const elapsed = elapsedS != null ? ` <span class="funnel__elapsed">${elapsedS}s in stage</span>` : "";
+  const partialFunnel = renderFunnelLine(funnel);
+  return `
+    <div class="card pipeline-running">
+      <div class="pipeline-running__head">
+        <span class="spinner"></span>
+        <span>Running <strong>${esc(aim.title)}</strong> · <code>${esc(mode)}</code> · <strong>${esc(stageLabel)}</strong>${elapsed}</span>
+      </div>
+      ${partialFunnel ? `<div class="digest__funnel digest__meta">${partialFunnel}</div>` : ""}
+    </div>`;
+}
+
+function renderFunnelLine(funnel) {
+  if (!funnel) return "";
+  const timing = funnel.timing_ms || {};
+  const fmt = (label, val, key) => {
+    if (val == null) return null;
+    const t = timing[key] != null ? ` <span class="funnel__elapsed">${(timing[key] / 1000).toFixed(1)}s</span>` : "";
+    return `<code>${esc(String(label))}</code>${t}`;
+  };
+  const bits = [
+    fmt(`ingested ${funnel.ingested}`, funnel.ingested, "ingesting"),
+    fmt(`chunked ${funnel.chunked}`, funnel.chunked, "processing"),
+    fmt(`embedded ${funnel.embedded}`, funnel.embedded, "embedding"),
+    fmt(`upserted ${funnel.upserted}`, funnel.upserted, "upserting"),
+    fmt(`retrieved ${funnel.unique_articles ?? funnel.retrieved}`, funnel.unique_articles ?? funnel.retrieved, "retrieving"),
+    fmt(`reranked ${funnel.reranked}`, funnel.reranked, "reranking"),
+    fmt(`items ${funnel.items}`, funnel.items, "generating"),
+  ].filter(Boolean);
+  return bits.length ? `Funnel: ${bits.join(" → ")}` : "";
+}
+
+function renderSourceStats(sourceStats) {
+  if (!sourceStats || !Object.keys(sourceStats).length) return "";
+  const chips = Object.entries(sourceStats)
+    .filter(([, s]) => s.used > 0)
+    .sort(([, a], [, b]) => b.used - a.used)
+    .map(([url, s]) => {
+      const host = shortHost(url);
+      const skipped = s.skipped_seen > 0 ? ` <span class="funnel__elapsed">${s.skipped_seen} skipped</span>` : "";
+      return `<span class="chip chip--source">${esc(host)} ×${s.used}${skipped}</span>`;
+    }).join("");
+  return chips ? `<div class="digest__sources digest__meta"><span class="digest__sources-label">Sources:</span> ${chips}</div>` : "";
+}
+
 function renderDigest(aim, d, mode) {
   const sections = (d.sections || []).map(renderSection).join("");
   const funnel = d.funnel || {};
-  const funnelBits = [
-    funnel.ingested != null ? `ingested ${funnel.ingested}` : null,
-    funnel.upserted != null ? `upserted ${funnel.upserted}` : null,
-    funnel.retrieved != null ? `retrieved ${funnel.retrieved}` : null,
-    funnel.sections != null ? `${funnel.sections} sections` : null,
-    funnel.items != null ? `${funnel.items} items` : null,
-  ].filter(Boolean).map((b) => `<code>${esc(b)}</code>`).join(" ");
+  const funnelLine = renderFunnelLine(funnel);
+  const sourcesHtml = renderSourceStats(funnel.source_stats);
 
   const generated = d.generated_at ? new Date(d.generated_at).toLocaleString() : "";
   const empty = !d.sections || !d.sections.length;
@@ -356,7 +398,8 @@ function renderDigest(aim, d, mode) {
         <span>For <strong>${esc(aim.title)}</strong></span>
         ${generated ? `<span>· generated ${esc(generated)}</span>` : ""}
       </div>
-      ${funnelBits ? `<div class="digest__funnel digest__meta">Funnel: ${funnelBits}</div>` : ""}
+      ${funnelLine ? `<div class="digest__funnel digest__meta">${funnelLine}</div>` : ""}
+      ${sourcesHtml}
     </div>
     <div class="digest__sections">
       ${empty
