@@ -58,6 +58,17 @@ Historical phase compare artifacts were only captured for the CEE Aim, so no pha
 
 **phase6g_fix judge notes:** H.R. 8470 held the top slot (5/5/5) and **a real SEC press release** — *"SEC and CFTC Propose Amendments to Reporting Requirements"* (sec.gov/newsroom/press-releases/2026-40) — landed at 5/4/5. Third item (OpenAI compliance/privacy) dropped to rel=3 (was dominant at 2.50 avg before). The digest now reads as a legislative+regulatory briefing first and a tech-news briefing third, which is what the Aim asked for.
 
+**Recall is stochastic on this eval, relevance is not.** Same config, 3 consecutive cached-mode runs on saas-ai-legislation post-Pinecone-cleanup:
+| run | recall@k | relevance | specificity | non-dup |
+|---|---|---|---|---|
+| 1 | 0.00 | 4.33 | 4.00 | 4.67 |
+| 2 | 0.00 | 4.33 | 4.00 | 4.67 |
+| 3 | 0.17 | 4.67 | 4.00 | 5.00 |
+
+Generate temperature is 0.3 (`pipeline/report.py:71`) and the final digest typically holds 3 items out of 4 golden-eligible slots, so the specific SEC press release lands probabilistically. Stable wins from 6G: relevance ~**4.33-4.67** every run (vs 2.50-3.00 pre-fix), non-dup ~**4.67-5.00** every run, and the candidate-pool diversity (SEC URLs in top-40 retrieve: **4/6 every run**) is deterministic. Recall being a single-shot statistic is a known limitation — eval v2 would run N trials and report median + CI; filed as a "next with a week" note.
+
+**Pinecone index cleanup** (scripts/cleanup_pinecone_dupes.py, applied Apr 24 14:55): deleted **3,311 duplicate chunks** across 108 articles, reducing total vectors 4,122 → 811 (80% reduction). Cleanup groups by (`article_id`, `chunk_index`) and keeps one chunk per pair. This means the OLD retrieve path (top_k=30 raw chunks, no collapse — still running on Cloud Run at commit 2cf747d) now sees **10 unique articles per top-30 pool instead of 5**, i.e. Cloud Run's saas digest also benefits from the cleanup, even without the 6G code change. The code fix + the data fix are separable and complementary: `collapse_chunks_by_article` is defensive against future re-upserts, cleanup is corrective for the existing state.
+
 ### Why recall@k was 0.00 — diagnosed, then fixed
 
 Initial hypothesis was "golden URLs rolled off the RSS feeds" — that was wrong. Checked: **all 6 golden positives are ingested, embedded, and live in Pinecone** (they're in `data/raw/*.json`, written through to GCS bronze + BigQuery `raw_articles` per Phase 5). The corpus has the right documents.
