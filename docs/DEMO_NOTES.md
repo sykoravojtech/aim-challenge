@@ -181,8 +181,26 @@ Seed risks (upgrade with specifics as they're encountered):
 - **No observability beyond stdout funnel metrics** — demo-OK, prod-blocker.
 - **Tier 3 semantic dedup's false-positive surface is bigger than the note implies.** 7/9 Phase-2 catches were arxiv-abstract boilerplate matching other arxiv abstracts at cosine 1.000 — legit dupes of the *content we have*, but not the cross-outlet rewrite story. On a denser wire-service source mix the signal would shift; today it's mostly insurance against boilerplate. See [LESSONS L4](LESSONS.md#l4-tier-3-semantic-dedup-catches-arxiv-more-than-news).
 - **Rerank+MMR is architecturally right but data-thin at today's pool size.** CEE Aim's post-region-filter pool has 1 dominant host; rerank/MMR's precision win is conditional on ≥3× candidate diversity (see [LESSONS § Rerank's precondition](LESSONS.md#reranks-precondition)). The Phase 4 ablation exposes the trade-off honestly (mean 8.00→7.00) rather than faking a gain. Not a break — a calibrated-expectation item. Lever is source expansion, not rerank tuning.
-- **Cloud Run → Pinecone roundtrip latency makes `incremental`/`force` mode slow on the deployed service.** ~8 s per Tier-3 semantic-dedup query from europe-west3 to Pinecone's AWS region — a 78-article ingest takes ~40 min on-cluster vs ~1 min on the laptop. BQ + GCS writes still land in ~6 s. Demo the deployed URL with `cached` mode (~30 s cold-start). Three mitigations on deck: batch Tier-3 checks, gate Tier-3 off in Cloud Run, or reindex Pinecone to `eu-west1`. See [LESSONS L6](LESSONS.md#l6-cloud-run-europe-west3--pinecone-serverless-has-610-s-per-query-roundtrips).
+- **Cloud Run → Pinecone roundtrip latency makes `incremental`/`force` mode slow on the deployed service.** ~8 s per Tier-3 semantic-dedup query from europe-west3 to Pinecone's AWS region — a 78-article ingest takes ~40 min on-cluster vs ~1 min on the laptop. BQ + GCS writes still land in ~6 s. Demo the deployed URL with `cached` mode (~30 s cold-start). Richer framing + three-layer fix plan in the narration block below. See [LESSONS L6](LESSONS.md#l6-cloud-run-europe-west3--pinecone-serverless-has-610-s-per-query-roundtrips).
 - _append as real fragility shows up during runs_
+
+### L6 demo narration (Cloud-Run-to-Pinecone latency + scalability honesty)
+
+If the HoE asks "why is it slow on Cloud Run" or probes the brief's "thousands of docs/day" scalability axis, say this aloud — don't hide it, name it clean and give the three-layer fix path:
+
+> *"I picked Pinecone to match your stack and Cloud Run `europe-west3` because the brief is written in Czechia. Those two good choices collide: the Pinecone index I created is in AWS `us-east-1`, so every Tier-3 semantic-dedup query is a cross-cloud HTTPS roundtrip. On the laptop that's ~150 ms; on Cloud Run it's **6–10 s per query**, amplified by Cloud Run's default CPU-throttling-between-requests behaviour for FastAPI BackgroundTasks. Consequence: a 78-article ingest that completes in ~90 s locally takes ~40 min on the deployed service. I did not try to hide this — the deployed URL demos `cached` mode (retrieval + generate only, 30 s), `force` and `incremental` demo on the laptop.*
+>
+> *You're absolutely right that 78 articles in 40 min is the opposite of the scalability answer the brief is asking for. The fix is three layers, and only the first is about Pinecone:*
+>
+> *1. **Colocate Pinecone.** Pinecone serverless runs natively on GCP — I'd recreate the index in `europe-west4` (Netherlands, same Google backbone as Frankfurt). ~5–15 ms per query instead of 6–10 s. ~30 min reindex of ~620 chunks, zero code change. This is the 500× win and it's a `gcloud`-style infra change, not an architectural pivot.*
+>
+> *2. **Batch the Tier-3 check.** Even with fast queries, per-chunk sequential doesn't scale. Replace `index.query(top_k=1)` per chunk with one `index.fetch(ids=[...])` across the candidate article_ids already in the seen-set, then cosine in-memory. O(chunks) queries → O(1). ~60 min in `pipeline/vector_store.py::upsert_chunks`.*
+>
+> *3. **Move ingest to Cloud Run Jobs, not BackgroundTasks.** BackgroundTasks inherit the request-scoped CPU of the parent HTTP handler — wrong primitive for batch work. Cloud Run Jobs are designed for this: full CPU for the duration, parallel workers, Pub/Sub-triggered. That's also how per-source rate limiting falls into place (one worker per source + Cloud Tasks). Afternoon of work to wire — named path from "10 sources" to "10,000".*
+>
+> *With #1 alone (30 min), today's design handles the brief's stated low-thousands/day comfortably. With all three, tens-of-thousands/day is in reach. The reason I didn't ship them today is that the Phase 5 goal was 'deployed URL, with the GCP services you asked about actually receiving writes' — Firestore, BigQuery, GCS are all live and verified. The Pinecone colocation is the 31st-minute item, which by the 30-min rule gets called out as what's next, not burned into today's clock."*
+
+**One-command mitigation available right now** (still free-tier at demo scale): `gcloud run services update aim --region=europe-west3 --no-cpu-throttling`. Removes the CPU-freeze between polls. Probably cuts the 40-min ingest to ~3 min without touching Pinecone. Demo-safety-net.
 
 ---
 
