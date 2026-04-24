@@ -13,7 +13,7 @@ Terminology (**Aim** = monitoring config, **Digest** = output) — see [PRODUCT_
 Before any code runs:
 
 - [ ] `.env` in repo root with `OPENAI_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX=aim-chunks` (+ GCP vars if Phase 5 is in scope)
-- [ ] `credentials.json` (GCP service account with Datastore / BigQuery / VertexAI / GCS roles) in repo root if Phase 5 is in scope
+- [ ] `credentials.json` (GCP service account with Firestore / BigQuery / GCS / Secret Manager / Artifact Registry / Cloud Run Admin roles) in repo root — local dev only; deployed Cloud Run service uses its own runtime SA via ADC
 - [ ] `git check-ignore -v .env credentials.json` — both must print a match before the first commit
 - [ ] Smoke-test keys: `uv run python -c "from openai import OpenAI; OpenAI().models.list().data[0].id"` and `uv run python -c "from pinecone import Pinecone; import os; print(Pinecone(api_key=os.environ['PINECONE_API_KEY']).list_indexes().names())"`
 - [ ] Pinecone serverless index `aim-chunks` must exist (`dim=1536`, `metric=cosine`). Create via the Pinecone UI if missing — takes 30 s.
@@ -275,27 +275,55 @@ Main session wires `retrieve(top_k=30) → rerank(top_n=15) → mmr → generate
 
 ---
 
-## Phase 5 — GCP swap (90–180 min, conditional)
+## Phase 5 — Ship on GCP (90–120 min)
 
-**If the HoE blesses it OR if Phases 0–4 land by 15:00, do 5a–5c minimum.** Everything swaps behind `storage.py`/`vector_store.py`/`embedding.py`; never break local fallback.
+**The endpoint is a running Cloud Run URL** serving the same FastAPI app + frontend, backed by Firestore and BigQuery. Local stays as demo fallback only — not the deliverable. Everything swaps behind `storage.py` / `ingestion.py`; never break local fallback during the transition (pre-deploy dry-runs need to work).
 
-> 🛑 **Branch-gate before starting Phase 5.** All earlier phases commit straight to `main` (one-day challenge — branches per feature are pure tax). Phase 5 is the exception: highest blast-radius change of the day, conditional, 90–180 min. Before any 5a code, **stop and ask the user** to confirm cutting `phase-5-gcp` off `main`. If GCP eats the afternoon, `git checkout main` and demo the local pipeline at 16:00 with zero damage. Do **not** auto-branch — explicit user accept required at execution time.
+> 🛑 **Branch-gate before starting Phase 5.** All earlier phases commit straight to `main` (one-day challenge — branches per feature are pure tax). Phase 5 is the exception: highest blast-radius change of the day, 90–120 min. Before any 5a code, **stop and ask the user** to confirm cutting `phase-5-gcp` off `main`. If Cloud Run deploy wedges, `git checkout main` and demo the local pipeline at 16:00 with zero damage. Do **not** auto-branch — explicit user accept required at execution time.
 
-### Priority order (stop when time runs out)
+### Scope calls (locked)
 
-- **5a. Firestore for aims + digests (25 min)** — dual-write JSON + Firestore, flip reader last. `storage.py` is the only file that changes.
-- **5b. BigQuery `raw_articles` (30 min)** — `bigquery_client.insert_rows_json("aim_pipeline.raw_articles", rows)` in ingestion step 4. Local JSON stays as dedup truth. Demo SQL: "per-source coverage this week".
-- **5c. VertexAI embeddings (25 min)** — `text-embedding-004` with `task_type="RETRIEVAL_DOCUMENT"` at index, `"RETRIEVAL_QUERY"` at retrieve. Pinecone index must be recreated at `dim=768` OR keep a provider flag per run. Strong talking point.
-- **5d. Typed digest items (30 min)** — per-`item_type` structured fields (`quote`+`attribution`, `entity`+`amount`). Matches live Digest shape from [PRODUCT_NOTES](PRODUCT_NOTES.md).
-- **5e. GCS bronze (15 min)** — mirror `data/raw/*.json` to `gs://aim-raw-articles/raw/{date}/{job_id}.json`. Trivial after 5b.
-- **5f. Cloud Run deploy (20 min)** — Dockerfile + `gcloud run deploy`. Pure polish. Skip unless everything else is rock-solid and the demo has a cached fallback to localhost: a cold-starting Cloud Run URL timing out mid-demo is worse than `uvicorn --port 4444`.
+- **Cron jobs:** out. Digest trigger stays manual via `POST /aim/{id}/digest?mode=force`. No Cloud Scheduler.
+- **More sources:** out. The current ~10 text sources are the point — extendability is demonstrated by the `@register` registry, not by adding feeds.
+- **VertexAI embeddings (was 5c):** cut. Pinecone reindex at `dim=768` costs more than the "GCP-native embeddings" talking point returns. Cloud Run calls OpenAI just fine. **Interview answer:** *"skipped because the Pinecone reindex cost dominates the architectural signal — `embedding.py` is a one-file swap when it matters."*
+- **Typed digest items (was 5d):** cut. Product shape, not infra. Doesn't move the "runs on GCP" needle.
 
-**Subagent fan-out:** 5a/5b/5c touch different files (`storage.py` / `ingestion.py` / `embedding.py`) — ideal fan-out shape. Spawn 3 in parallel *after* the `phase-5-gcp` branch is cut:
-- **A → 5a Firestore** in `pipeline/storage.py`: dual-write JSON + Firestore behind an env flag; flip reader last. Never break local fallback.
+### Priority order
+
+- **5a. Firestore for aims + digests (25 min)** — Cloud Run is stateless, so `data/aims/*.json` would evaporate per container. Dual-write JSON + Firestore behind `USE_FIRESTORE` env flag, flip reader last. `pipeline/storage.py` is the only file that changes. Use the default database in Native mode, region `europe-west3`.
+- **5b. BigQuery `raw_articles` (25 min)** — `bigquery_client.insert_rows_json("aim_pipeline.raw_articles", rows)` in ingestion step 4. Local JSON stays as dedup truth. Strong demo: one SQL query showing per-source coverage this week.
+- **5e. GCS bronze (10 min)** — mirror `data/raw/*.json` to `gs://<bucket>/raw/{date}/{job_id}.json`. Trivial once the BQ client is wired. "Raw archive for reprocessing" talking point.
+- **5f. Cloud Run deploy (35 min) — THE GOAL.** Dockerfile + Artifact Registry push + `gcloud run deploy` with `--set-secrets` against Secret Manager. Service account with Firestore User + BigQuery Data Editor + BigQuery Job User + Storage Object Admin + Secret Manager Secret Accessor. Frontend is already mounted at `/` by FastAPI (`main.py:163`), so one service serves both. Keep `uvicorn --port 4444` warm locally — cold Cloud Run start is the one thing that can wreck the demo.
+
+### Secrets handling (non-negotiable)
+
+- **Do not** bake `OPENAI_API_KEY` / `PINECONE_API_KEY` into the image. Use Secret Manager.
+- Create two secrets: `openai-api-key`, `pinecone-api-key` (values = current `.env` values).
+- At deploy: `--set-secrets=OPENAI_API_KEY=openai-api-key:latest,PINECONE_API_KEY=pinecone-api-key:latest`.
+- Grant the Cloud Run runtime service account `roles/secretmanager.secretAccessor` on each secret.
+- `.env` stays local-only; `credentials.json` is local-only too — Cloud Run uses its runtime SA via ADC, so `GOOGLE_APPLICATION_CREDENTIALS` must be **unset** inside the container.
+
+### Subagent fan-out
+
+5a/5b touch different files (`storage.py` / `ingestion.py`) — safe to parallelise. 5f is sequential (needs 5a+5b merged first so the deployed image actually uses GCP services). Spawn 2 in parallel *after* the `phase-5-gcp` branch is cut:
+- **A → 5a Firestore** in `pipeline/storage.py`: dual-write JSON + Firestore behind `USE_FIRESTORE` env flag; flip reader last. Never break local fallback during the transition.
 - **B → 5b BigQuery** in `pipeline/ingestion.py` write path: `bigquery_client.insert_rows_json("aim_pipeline.raw_articles", rows)` after `save_raw_articles`. Local JSON remains dedup truth.
-- **C → 5c VertexAI** in `pipeline/embedding.py`: `text-embedding-004` with `task_type=RETRIEVAL_DOCUMENT|RETRIEVAL_QUERY`; recreate Pinecone index at `dim=768` OR gate behind a provider flag per run.
 
-Main session merges sequentially, running the full pipeline after each swap lands. 5d/5e/5f are solo (typed items needs product judgement; GCS + Cloud Run are single-file, trivial).
+Main session merges sequentially, runs the full pipeline after each swap lands, then does 5e (trivial) and 5f (Dockerfile + deploy) solo.
+
+### Console pre-work the user can do in parallel with Phase 4
+
+These are web-console clicks — no code, no conflict with the in-flight Phase 4 session. Doing these now shaves ~20 min off the Phase 5 critical path:
+
+1. **Enable APIs** in the target project: Firestore, Cloud Run, Cloud Build, Artifact Registry, BigQuery, Secret Manager, Cloud Storage. One-click each.
+2. **Firestore:** create database in **Native mode**, region `europe-west3`. Mode cannot be changed after creation — pick Native.
+3. **BigQuery:** create dataset `aim_pipeline` in `europe-west3`. Table `raw_articles` will be auto-created by code on first insert.
+4. **Cloud Storage:** create a single-region bucket in `europe-west3` (e.g. `aim-raw-<suffix>`), standard class, uniform access.
+5. **Artifact Registry:** create a Docker repo in `europe-west3` (e.g. `aim-images`) for Cloud Run container images.
+6. **Secret Manager:** create two secrets — `openai-api-key` and `pinecone-api-key` — paste current `.env` values as `latest` versions.
+7. **Service account** (optional but cleaner than default compute SA): create `aim-runtime@<project>.iam.gserviceaccount.com`, grant Firestore User + BigQuery Data Editor + BigQuery Job User + Storage Object Admin + Secret Manager Secret Accessor.
+
+If any of these is easier via `gcloud` than the console, that's fine too — the point is they're infra provisioning, fully decoupled from Phase 4 code edits.
 
 ---
 
@@ -345,7 +373,7 @@ Weak candidates hand-wave on "what's next"; strong ones name modules and line co
 
 - **30-min rule.** Single layer blocked >30 min → stub/degrade and continue.
 - **Never commit a broken main.** Revert partial commits before pivoting.
-- **Phases 0–1 are non-negotiable.** Phases 2–3 are expected. Phase 4 earns 45 min of explicit polish. Phase 5 is conditional on time + HoE steer.
+- **Phases 0–1 are non-negotiable.** Phases 2–3 are expected. Phase 4 earns 45 min of explicit polish. Phase 5 (ship on GCP via Cloud Run) is the headline deliverable — HoE explicitly wants to see the deployed URL.
 - **Verbalise every pivot.** "I'm stubbing X because Y — does that match your expectation?" Free signal, cheap course-correct.
 
 ---
@@ -359,10 +387,11 @@ Tick as each lands:
 - [x] Phase 1 — FastAPI + CRUD + three-mode trigger
 - [x] Phase 2 — Dedup (Tier 1 + Tier 3) + retries
 - [x] Phase 3 — Frontend
-- [ ] Phase 4 — Rerank + MMR + compare tooling
-- [ ] Phase 5a — Firestore swap
-- [ ] Phase 5b — BigQuery raw_articles
-- [ ] Phase 5c — VertexAI embeddings
-- [ ] Phase 5d — Typed digest items
+- [x] Phase 4 — Rerank + MMR + compare tooling
+- [ ] Phase 5 console pre-work (APIs, Firestore db, BQ dataset, GCS bucket, Artifact Registry repo, Secret Manager, runtime SA)
+- [ ] Phase 5a — Firestore swap (`storage.py`)
+- [ ] Phase 5b — BigQuery `raw_articles` (`ingestion.py`)
 - [ ] Phase 5e — GCS bronze
-- [ ] Phase 5f — Cloud Run deploy
+- [ ] Phase 5f — Cloud Run deploy with Secret Manager (the goal)
+- [x] ~~Phase 5c — VertexAI embeddings~~ (cut: Pinecone reindex cost > signal)
+- [x] ~~Phase 5d — Typed digest items~~ (cut: product, not infra)

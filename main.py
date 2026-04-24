@@ -36,8 +36,19 @@ from pipeline.embedding import embed_texts  # noqa: E402
 from pipeline.ingestion import SEED_AIMS, ingest_all_sources  # noqa: E402
 from pipeline.processing import chunk_articles  # noqa: E402
 from pipeline.report import generate_digest  # noqa: E402
-from pipeline.retrieval import RETRIEVE_TOP_K, retrieve_relevant_chunks  # noqa: E402
-from pipeline.vector_store import get_index, upsert_chunks  # noqa: E402
+from pipeline.retrieval import (  # noqa: E402
+    build_query_filter,
+    build_query_text,
+    mmr_diversify,
+    rerank_chunks,
+)
+from pipeline.vector_store import get_index, query as vector_query, upsert_chunks  # noqa: E402
+
+# Phase 4 funnel shape: retrieve 30 → rerank to 15 → MMR diversify to 10 → generate.
+RETRIEVE_TOP_K = 30
+RERANK_TOP_N = 15
+MMR_TOP_K = 10
+MMR_LAMBDA = 0.7
 
 logging.basicConfig(
     level=logging.INFO,
@@ -257,13 +268,32 @@ def run_pipeline(aim_id: str, digest_id: str, mode: Mode) -> None:
                 )
 
         _set_stage(digest_id, "retrieving")
-        retrieved = retrieve_relevant_chunks(oai, index, aim, top_k=RETRIEVE_TOP_K)
+        q_emb = embed_texts(oai, [build_query_text(aim)])[0]
+        retrieved = vector_query(
+            index,
+            q_emb,
+            top_k=RETRIEVE_TOP_K,
+            filter=build_query_filter(aim),
+            include_values=True,
+        )
         funnel["retrieved"] = len(retrieved)
         if not retrieved:
             log.warning("[%s] retrieval returned 0 chunks; regions=%s", digest_id, aim.regions)
 
+        _set_stage(digest_id, "reranking")
+        reranked = rerank_chunks(oai, retrieved, aim, top_n=RERANK_TOP_N)
+        funnel["reranked"] = len(reranked)
+
+        _set_stage(digest_id, "diversifying")
+        diversified = mmr_diversify(reranked, q_emb, top_k=MMR_TOP_K, lambda_=MMR_LAMBDA)
+        funnel["diversified"] = len(diversified)
+        log.info(
+            "[%s] rerank+mmr funnel: %d → %d → %d",
+            digest_id, len(retrieved), len(reranked), len(diversified),
+        )
+
         _set_stage(digest_id, "generating")
-        raw_digest = generate_digest(oai, aim, retrieved)
+        raw_digest = generate_digest(oai, aim, diversified)
         funnel["sections"] = len(raw_digest.get("sections", []))
         funnel["items"] = sum(len(s.get("items", [])) for s in raw_digest.get("sections", []))
 

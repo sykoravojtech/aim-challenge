@@ -92,3 +92,13 @@ Rule: before adding rerank, verify the pool has at least ~3× as many distinct o
 - **Lead with the cheap-talk version of the decision**: "Tier 1 is the workhorse — 77/78 skips in run 2. Tier 3 is the *insurance* that catches what Tier 1 can't see, mostly arxiv boilerplate in the current source mix. The 'AP rewritten by Reuters' story needs a denser wire-service source mix to show up in numbers."
 - **Don't oversell** Tier 3 in the DECISIONS interview note without this caveat — D13 currently implies cross-outlet rewrites; at the current source mix that's talked-about, not measured. Append a cross-ref to this lesson on D13.
 
+## L5. MMR over rerank trades mean relevance for section coverage
+
+**Phase:** 4
+
+**What surprised me:** The `rerank_only` snapshot (retrieve 30 → rerank to 15 → generate top 15) produced a **mean relevance of 8.00** across 3 items in 2 sections; the `full` snapshot (same pipe + MMR λ=0.7 to 10 → generate top 10) produced **mean 7.00** across 4 items in 3 sections. The "worse" number on paper is the better artefact — MMR pushed out a cluster of near-duplicate high-score chunks and made room for a third section ("AI Landscape Developments") that rerank-alone had collapsed into "Startup Ecosystem Insights". URL Jaccard between the two was 0.75 (3 of 4 shared).
+
+**Context:** With a 10-feed cached Pinecone state (~600 chunks), the rerank stage saturates the top of the pool on a narrow topic — MMR does exactly what it's designed to: trade some top-end relevance for breadth. `λ=0.7` is the ROADMAP-prescribed default; a sweep is afternoon-sized, not today-sized.
+
+**What to do about it:** Lead the demo with the compare tool, not the raw digest. Say it aloud: *"mean relevance drops 8.00→7.00 because MMR is doing its job — that's the section coverage buying you 3 sections instead of 2 at the cost of swapping one high-score near-duplicate for a lower-but-still-on-Aim chunk."* If mean relevance ever goes up with MMR on, the candidate pool was thinner than it looks — re-check the retrieve top_k before blaming rerank.
+

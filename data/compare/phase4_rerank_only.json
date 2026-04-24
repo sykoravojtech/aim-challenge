@@ -1,0 +1,58 @@
+{
+  "headline": "Czech & CEE Founder Media Digest - April 24, 2026",
+  "date_range": "Apr 24, 2026 (single-day run)",
+  "sections": [
+    {
+      "title": "Recent Fundraising Activities",
+      "items": [
+        {
+          "title": "Polish-Based GRAI Secures \u20ac7.65M Seed Funding",
+          "body": "GRAI, a Polish startup, has successfully secured \u20ac7.65 million in seed funding to develop its AI-powered music remix platform. This funding marks a significant step for the company as it aims to innovate within the music industry.",
+          "source_urls": [
+            "https://therecursive.com/grai-secures-e7-65m-seed-funding-to-build-ai-powered-music-remix-platform/"
+          ],
+          "source_count": 1,
+          "item_type": "investment",
+          "relevance_score": 8
+        }
+      ]
+    },
+    {
+      "title": "Startup Ecosystem Insights",
+      "items": [
+        {
+          "title": "Slovenia's Strategy for Startup Internationalisation",
+          "body": "Slovenian startups are increasingly looking towards the CEE-DACH corridor for international expansion, leveraging close markets and familiar regulatory frameworks. This strategic focus is expected to enhance their chances of early traction in new markets.",
+          "source_urls": [
+            "https://therecursive.com/slovenia-startup-ecosystem-internationalisation-viennaup-2026/"
+          ],
+          "source_count": 1,
+          "item_type": "news",
+          "relevance_score": 7
+        },
+        {
+          "title": "Google Veteran's Perspective on CEE's AI Landscape",
+          "body": "A former Google executive has joined Bulgarian AdScout, sharing insights on the complementary strengths between the US and CEE in the AI sector. He emphasizes that while the US leads in capital, CEE excels in building efficient, durable products.",
+          "source_urls": [
+            "https://therecursive.com/google-veteran-joins-bulgarian-adscout-to-tackle-trust-tax/"
+          ],
+          "source_count": 1,
+          "item_type": "quote",
+          "relevance_score": 9
+        }
+      ]
+    }
+  ],
+  "_funnel": {
+    "label": "rerank_only",
+    "aim_id": "cee-founder-media",
+    "retrieve_k": 30,
+    "rerank": true,
+    "mmr": false,
+    "retrieved": 30,
+    "reranked": 15,
+    "sections": 2,
+    "items": 3
+  },
+  "_captured_at": "2026-04-24T08:58:02.201269+00:00"
+}

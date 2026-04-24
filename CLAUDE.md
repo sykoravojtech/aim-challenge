@@ -82,7 +82,7 @@ Modules in `pipeline/` map 1:1 onto stages. Each emits structured Pydantic, each
 | Models | Pydantic v2 | |
 | Frontend (Phase 3) | Vanilla HTML/CSS/JS, Inter from Google Fonts | No framework, no build step. Design tokens in [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md). |
 
-Deferred to Phase 5 (GCP swap): Firestore, BigQuery raw_articles, VertexAI embeddings, GCS bronze, Cloud Run deploy. **If the HoE asks for GCP, priority order is: Firestore → BigQuery raw → VertexAI → GCS.** Pinecone metadata filters are Tier A (already wired from Phase 0). See [docs/ROADMAP.md § Phase 5](docs/ROADMAP.md#phase-5--gcp-swap-90180-min-conditional) for the exact swap plan.
+Phase 5 (ship on GCP — HoE's top ask): Firestore (aims+digests), BigQuery `raw_articles`, GCS bronze, Cloud Run deploy with Secret Manager. **Priority order: Firestore → BigQuery → GCS → Cloud Run deploy.** VertexAI embeddings and typed digest items are **cut** (see ROADMAP Phase 5 for reasoning). Pinecone metadata filters are Tier A (wired from Phase 0). See [docs/ROADMAP.md § Phase 5](docs/ROADMAP.md#phase-5--ship-on-gcp-90120-min) for the exact swap plan.
 
 ## Core principles
 
@@ -114,7 +114,7 @@ Phase numbers map to the brief's demands; the clock is what matters (`data/compa
 | 2 | Dedup (URL md5 live + MinHash + semantic talked-about) + tenacity retries + per-source try/except | 45 min | re-running a digest returns 0 new articles but still a digest |
 | 3 | **Frontend** (vanilla HTML/CSS/JS card-based Digest rendering, Aim form, mode selector) | 60 min | clicking through the UI without curl works |
 | 4 | LLM rerank + MMR diversity + `scripts/compare_digests.py` + before/after snapshots | 45 min | compare tool prints a readable diff table |
-| 5 | GCP swap (conditional): Firestore → BigQuery raw → VertexAI → Cloud Run | 90–180 min | at least 5a (Firestore) lands, local fallback intact |
+| 5 | Ship on GCP: Firestore → BigQuery raw → GCS bronze → Cloud Run deploy (Secret Manager for keys) | 90–120 min | Cloud Run URL serves the UI + API; Firestore holds aims/digests; BQ has raw_articles rows |
 
 **The 14:30 rule.** Set an alarm. At 14:30:
 - API works + frontend done → go to Phase 4 (rerank).

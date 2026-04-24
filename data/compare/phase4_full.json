@@ -1,0 +1,74 @@
+{
+  "headline": "Czech & CEE Founder Media Monitoring Digest",
+  "date_range": "Apr 24, 2026 (single-day run)",
+  "sections": [
+    {
+      "title": "Funding Announcements",
+      "items": [
+        {
+          "title": "Polish-Based GRAI Secures \u20ac7.65M Seed Funding",
+          "body": "GRAI, a Polish startup, has successfully raised \u20ac7.65 million in seed funding to develop its AI-powered music remix platform. This funding marks a significant step for the company as it aims to innovate within the music technology space.",
+          "source_urls": [
+            "https://therecursive.com/grai-secures-e7-65m-seed-funding-to-build-ai-powered-music-remix-platform/"
+          ],
+          "source_count": 1,
+          "item_type": "investment",
+          "relevance_score": 8
+        },
+        {
+          "title": "Codery Acquires Elfshock",
+          "body": "Bulgarian-founded Codery has announced its acquisition of Elfshock, a company specializing in robotic process automation and AI-driven solutions. This acquisition is expected to enhance Codery's offerings in the financial services sector.",
+          "source_urls": [
+            "https://therecursive.com/cee-startup-tech-weekly-two-polish-startups-raise-fresh-funding/"
+          ],
+          "source_count": 1,
+          "item_type": "announcement",
+          "relevance_score": 7
+        }
+      ]
+    },
+    {
+      "title": "Startup Internationalisation Insights",
+      "items": [
+        {
+          "title": "Slovenia's Strategy for Startup Growth",
+          "body": "Slovenian startups are increasingly looking towards the CEE-DACH corridor for international expansion, leveraging familiar regulatory frameworks and overlapping investor networks. This strategy is seen as crucial for achieving early traction in new markets.",
+          "source_urls": [
+            "https://therecursive.com/slovenia-startup-ecosystem-internationalisation-viennaup-2026/"
+          ],
+          "source_count": 1,
+          "item_type": "news",
+          "relevance_score": 6
+        }
+      ]
+    },
+    {
+      "title": "AI Landscape Developments",
+      "items": [
+        {
+          "title": "Google Veteran Joins Bulgarian AdScout",
+          "body": "A former Google executive has joined Bulgarian startup AdScout to address the 'trust tax' in advertising. This move highlights the growing importance of trust and transparency in the AI-driven advertising landscape.",
+          "source_urls": [
+            "https://therecursive.com/google-veteran-joins-bulgarian-adscout-to-tackle-trust-tax/"
+          ],
+          "source_count": 1,
+          "item_type": "news",
+          "relevance_score": 7
+        }
+      ]
+    }
+  ],
+  "_funnel": {
+    "label": "full",
+    "aim_id": "cee-founder-media",
+    "retrieve_k": 30,
+    "rerank": true,
+    "mmr": true,
+    "retrieved": 30,
+    "reranked": 15,
+    "diversified": 10,
+    "sections": 3,
+    "items": 4
+  },
+  "_captured_at": "2026-04-24T08:58:14.893328+00:00"
+}

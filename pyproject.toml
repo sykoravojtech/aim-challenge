@@ -19,4 +19,5 @@ dependencies = [
     "google-cloud-bigquery>=3.27",
     "google-cloud-aiplatform>=1.80",
     "google-cloud-storage>=2.19",
+    "numpy>=2.4.4",
 ]

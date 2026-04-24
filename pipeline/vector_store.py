@@ -106,28 +106,36 @@ def upsert_chunks(
     }
 
 
-def query(index, embedding: list[float], top_k: int, filter: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+def query(
+    index,
+    embedding: list[float],
+    top_k: int,
+    filter: dict[str, Any] | None = None,
+    include_values: bool = False,
+) -> list[dict[str, Any]]:
     res = index.query(
         vector=embedding,
         top_k=top_k,
         filter=filter,
         include_metadata=True,
+        include_values=include_values,
     )
     out = []
     for match in res.get("matches", []):
         md = match.get("metadata", {}) or {}
-        out.append(
-            {
-                "chunk_id": match["id"],
-                "score": match["score"],
-                "article_id": md.get("article_id"),
-                "source_url": md.get("source_url"),
-                "source_feed": md.get("source_feed", ""),
-                "title": md.get("title"),
-                "text": md.get("text"),
-                "source_type": md.get("source_type"),
-                "region": md.get("region"),
-                "published_ts": md.get("published_ts"),
-            }
-        )
+        item = {
+            "chunk_id": match["id"],
+            "score": match["score"],
+            "article_id": md.get("article_id"),
+            "source_url": md.get("source_url"),
+            "source_feed": md.get("source_feed", ""),
+            "title": md.get("title"),
+            "text": md.get("text"),
+            "source_type": md.get("source_type"),
+            "region": md.get("region"),
+            "published_ts": md.get("published_ts"),
+        }
+        if include_values:
+            item["embedding"] = match.get("values") or []
+        out.append(item)
     return out

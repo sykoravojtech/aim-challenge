@@ -28,6 +28,18 @@ Phase 1 funnels (via FastAPI + BackgroundTask, CEE Aim, `data/compare/phase1_api
 - **`mode=incremental`** (after force; Tier 1 seen-set now wired via `save_raw_articles`): `INGESTED=0 (skipped_seen=78) → RETRIEVED=20 → SECTIONS=3 / ITEMS=4` in ~20 s.
 - **`mode=cached`** (skip ingest entirely, retrieve against live Pinecone): `RETRIEVED=20 → SECTIONS=2 / ITEMS=4` in ~17 s. The 5× delta vs `force` is the demo story — see [LESSONS L3](LESSONS.md#l3-modecached-latency-is-llm-generate-dominated-not-pipeline-dominated).
 
+Phase 4 funnels (CEE Aim, cached Pinecone state, `data/compare/phase4_*.json`):
+- **`rerank_only`** (retrieve 30 → rerank to 15 → generate): `RETRIEVED=30 → RERANKED=15 (mean=8.40) → SECTIONS=2 / ITEMS=3` in ~10 s.
+- **`full`** (retrieve 30 → rerank to 15 → MMR λ=0.7 to 10 → generate): `RETRIEVED=30 → RERANKED=15 (mean=7.60) → DIVERSIFIED=10 → SECTIONS=3 / ITEMS=4` in ~12 s.
+- **Ablation diff (`scripts/compare_digests.py rerank_only full`)**: MMR expands sections 2→3, items 3→4, surfaces a third section ("AI Landscape Developments") the rerank-only run collapsed into "Startup Ecosystem Insights"; URL Jaccard 0.75 (3/4 shared); mean relevance drops 8.00→7.00 — **the expected rerank/diversity trade-off**, made visible by the compare tool. See [LESSONS L5](LESSONS.md#l5-mmr-over-rerank-trades-mean-relevance-for-section-coverage).
+- **Baseline diff (`phase2_dedup.json` vs `phase4_full.json`)**: same section/item counts (3/4) at a different topic split — the rerank+MMR stack replaces "Recent Fundraising Activities / Startup Internationalisation / AI and Engineering in CEE" with "Funding Announcements / Startup Internationalisation / AI Landscape Developments"; URL Jaccard 0.60 (3/5 shared), host Jaccard 1.00, mean relevance 7.25 → 7.00.
+
+### Phase 4 demo narration (say this aloud, honest read)
+
+The compare table is the exhibit — don't oversell it. On a thin CEE pool with one dominant on-Aim host, the rerank+MMR stack is **architecturally right but data-thin**: the baseline vs `full` diff shows 1 swapped URL and a ~0.25-point mean-relevance drop, not a revolution. That's exactly what the standing idiom [LESSONS § Rerank's precondition](LESSONS.md#reranks-precondition) predicts — rerank earns its pay only when the candidate pool has ≥3× as many distinct on-Aim articles as final items, and CEE's hits-per-host skew isn't there yet.
+
+Demo line: *"Multi-stage ranking is the brief's graded-dimension #1, so I wired it — retrieve 30 → rerank 15 → MMR to 10 — and exposed the ablation via `compare_digests.py` so you can see what each stage buys. On this pool, MMR's trade-off is visible (mean relevance 8.00 → 7.00, sections 2 → 3), which is textbook. The lever that makes it measurably better isn't rerank tuning — it's 3× the source set for this Aim. That's a named item in § 5 'what's next'."*
+
 Phase 2 funnels (`data/compare/phase2_dedup.json`, CEE Aim, two back-to-back runs):
 - **Run 1, `mode=force`** (Tier 3 semantic dedup now gates upsert): `INGESTED=78 → CHUNKED=623 → EMBEDDED=623 → UPSERTED=614 (SEMANTIC_DUPS=9) → RETRIEVED=20 → SECTIONS=3 / ITEMS=4` in ~124 s. The 9 Tier-3 catches were mostly arxiv-abstract boilerplate, not cross-outlet rewrites — see [LESSONS L4](LESSONS.md#l4-tier-3-semantic-dedup-catches-arxiv-more-than-news).
 - **Run 2, `mode=incremental`** (Tier 1 URL md5 on top of run 1's seen-set): `INGESTED=1 (skipped_seen=77) → CHUNKED=4 → UPSERTED=4 → RETRIEVED=20 → SECTIONS=3 / ITEMS=4` in ~13 s. **The demo line: 77/78 articles skipped by Tier 1, Digest still emits in 13 s.** The one new ingest was a Forbes.cz entry published between the two runs — proof that `incremental` tracks live feeds, not a failure.
@@ -49,8 +61,8 @@ Say this out loud when pointing at the two `data/compare/phase2_dedup.json` funn
 | chunk | `pipeline/processing.py::chunk_articles` | ✅ Phase 0–1 | LangChain `RecursiveCharacterTextSplitter(800, overlap=100)`, title prepended so every chunk is self-identifying at rerank time. |
 | embed | `pipeline/embedding.py::embed_texts` | ✅ Phase 0–1 | `text-embedding-3-small`, batched ≤100. Swap path to VertexAI `text-embedding-004` with `task_type=RETRIEVAL_DOCUMENT` is one file. |
 | store | `pipeline/vector_store.py::upsert_chunks` | ✅ Phase 0–2 | Pinecone serverless, `dim=1536`, chunks tagged with `region` + `source_type` at ingest — **these are filter dimensions, not prompt content.** **Phase 2**: Tier 3 semantic dedup — per-chunk `top_k=1` query with `article_id $ne` filter, skip if cosine ≥0.93, logged as `semantic_dup of {id}`. Tier 1 URL-md5 seen-set lives in `pipeline/storage.py::get_seen_article_ids`. |
-| retrieve | `pipeline/retrieval.py::retrieve_relevant_chunks` | ✅ Phase 0–1 | Hybrid retrieval: `{"region": {"$in": [*aim.regions, "Global"]}}` as a Pinecone filter *before* ANN. Global always OR'd in so Global-tagged pieces still serve regional Aims. |
-| rerank | `pipeline/retrieval.py::rerank_chunks` | ⏳ Phase 4 | `gpt-4o-mini` JSON call with full Aim in the prompt — 15× cheaper than `gpt-4o` for structured rerank. |
+| retrieve | `pipeline/retrieval.py::retrieve_relevant_chunks` (+ `build_query_text`/`build_query_filter` primitives wired into `main.py::run_pipeline`) | ✅ Phase 0–4 | Hybrid retrieval: `{"region": {"$in": [*aim.regions, "Global"]}}` as a Pinecone filter *before* ANN. Global always OR'd in so Global-tagged pieces still serve regional Aims. **Phase 4**: `top_k=30` with `include_values=True` so MMR has the vectors. |
+| rerank | `pipeline/retrieval.py::rerank_chunks` + `mmr_diversify` | ✅ Phase 4 | `gpt-4o-mini` JSON call assigns 0–10 per chunk with full Aim in the prompt (15× cheaper than `gpt-4o` for structured rerank); response goes through `safe_llm_json`, hard-fail falls back to vector order. MMR (`λ=0.7`) over Pinecone-returned embeddings picks top 10 from the reranked 15 — biases against near-duplicates the rerank kept. Funnel: **retrieve 30 → rerank 15 → MMR 10**. |
 | generate | `pipeline/report.py::generate_digest` | ✅ Phase 0–1 | `gpt-4o-mini`, `response_format={"type":"json_object"}`, `temperature=0.3`. **LLM picks 2–5 section titles per run** — Phase 1 API run chose "Recent Fundraising Activities / Startup Internationalisation Efforts / Insights from Industry Leaders" for the CEE Aim. |
 
 ---
@@ -99,6 +111,7 @@ Seed candidates (expand + sharpen as the day goes):
 - **PodcastConnector** — `pipeline/sources/podcast.py` via registry, ~120 LOC (yt-dlp + Whisper batch).
 - **Real Pub/Sub fan-out** — topic-per-stage + DLQ, ~60 LOC + GCP config.
 - **BigQuery VECTOR_SEARCH** as an alternate `VectorStore` implementation — ~50 LOC swap in `pipeline/vector_store.py`.
+- **3× the CEE source set to unlock rerank+MMR's measurable gain** — today the CEE Aim's on-Aim pool is dominated by one host, so the Phase 4 ablation shows the trade-off but not the precision win. Add ~15 CEE RSS feeds (ČT24, seznamzpravy.cz, CzechCrunch EN, reflex.cz, e15.cz, denikn.cz, Visegrad Insight, 150sec, Emerging Europe, SeeNews, kafkadesk.org, intellinews CEE, budapesttimes, romania-insider, sofiaglobe) via the existing `@register("rss")` registry. Pure config change, ~20 LOC in `pipeline/ingestion.py::SOURCES`. This is the lever that moves the needle on rerank's precision — see [LESSONS § Rerank's precondition](LESSONS.md#reranks-precondition).
 - _append as items get deferred during the day_
 
 ---
@@ -116,6 +129,7 @@ Seed risks (upgrade with specifics as they're encountered):
 - **Pinecone single-tenancy** — one global index, metadata-filtered per Aim. Fine at demo scale, needs per-namespace partitioning at multi-tenant scale.
 - **No observability beyond stdout funnel metrics** — demo-OK, prod-blocker.
 - **Tier 3 semantic dedup's false-positive surface is bigger than the note implies.** 7/9 Phase-2 catches were arxiv-abstract boilerplate matching other arxiv abstracts at cosine 1.000 — legit dupes of the *content we have*, but not the cross-outlet rewrite story. On a denser wire-service source mix the signal would shift; today it's mostly insurance against boilerplate. See [LESSONS L4](LESSONS.md#l4-tier-3-semantic-dedup-catches-arxiv-more-than-news).
+- **Rerank+MMR is architecturally right but data-thin at today's pool size.** CEE Aim's post-region-filter pool has 1 dominant host; rerank/MMR's precision win is conditional on ≥3× candidate diversity (see [LESSONS § Rerank's precondition](LESSONS.md#reranks-precondition)). The Phase 4 ablation exposes the trade-off honestly (mean 8.00→7.00) rather than faking a gain. Not a break — a calibrated-expectation item. Lever is source expansion, not rerank tuning.
 - _append as real fragility shows up during runs_
 
 ---
