@@ -355,7 +355,7 @@ Tick as each lands:
 
 - [x] Pre-Phase-0 pre-flight (keys, credentials, Pinecone index)
 - [x] Phase 0 — Walking skeleton
-- [ ] Phase 1 — FastAPI + CRUD + three-mode trigger
+- [x] Phase 1 — FastAPI + CRUD + three-mode trigger
 - [ ] Phase 2 — Dedup (Tier 1 + Tier 3) + retries
 - [ ] Phase 3 — Frontend
 - [ ] Phase 4 — Rerank + MMR + compare tooling

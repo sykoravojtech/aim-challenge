@@ -23,16 +23,21 @@ Update this section as each phase lands — only claim a verb if it's actually w
 
 Phase 0 baseline funnel (CEE Aim): `INGESTED=77 → CHUNKED=582 → EMBEDDED=582 → UPSERTED=582 → RETRIEVED=20 → SECTIONS=3 / ITEMS=7` end-to-end in ~90 s. Saved to `data/compare/phase0_walking_skeleton.json`.
 
+Phase 1 funnels (via FastAPI + BackgroundTask, CEE Aim, `data/compare/phase1_api_version.json`):
+- **`mode=force`** (full pipe): `INGESTED=78 → CHUNKED=623 → EMBEDDED=623 → UPSERTED=623 → RETRIEVED=20 → SECTIONS=3 / ITEMS=4` in ~83 s.
+- **`mode=incremental`** (after force; Tier 1 seen-set now wired via `save_raw_articles`): `INGESTED=0 (skipped_seen=78) → RETRIEVED=20 → SECTIONS=3 / ITEMS=4` in ~20 s.
+- **`mode=cached`** (skip ingest entirely, retrieve against live Pinecone): `RETRIEVED=20 → SECTIONS=2 / ITEMS=4` in ~17 s. The 5× delta vs `force` is the demo story — see [LESSONS L3](LESSONS.md#l3-modecached-latency-is-llm-generate-dominated-not-pipeline-dominated).
+
 | Verb | Module | Status | One-liner for demo |
 |---|---|---|---|
-| ingest | `scripts/run_pipeline.py::ingest_all_sources` (Phase 1: `pipeline/ingestion.py`) | ✅ Phase 0 | 10 RSS feeds behind a `RSSConnector` in a `REGISTRY` dict — adding a Mexican-state-institutions source is one `@register("mexico_gov")` line, not a pipeline rewrite. |
-| extract | `RSSConnector.fetch` | ✅ Phase 0 | `trafilatura` on the article URL, fall back to RSS `<content:encoded>` when 403 — **saved 15/77 docs on SEC + VentureBeat this morning.** |
-| chunk | `chunk_articles` | ✅ Phase 0 | LangChain `RecursiveCharacterTextSplitter(800, overlap=100)`, title prepended so every chunk is self-identifying at rerank time. |
-| embed | `embed_texts` | ✅ Phase 0 | `text-embedding-3-small`, batched ≤100. Swap path to VertexAI `text-embedding-004` with `task_type=RETRIEVAL_DOCUMENT` is one file. |
-| store | `upsert_chunks` (Phase 1: `pipeline/vector_store.py`) | ✅ Phase 0 | Pinecone serverless, `dim=1536`, chunks tagged with `region` + `source_type` at ingest — **these are filter dimensions, not prompt content.** |
-| retrieve | `retrieve_relevant_chunks` | ✅ Phase 0 | Hybrid retrieval: `{"region": {"$in": [*aim.regions, "Global"]}}` as a Pinecone filter *before* ANN. Global always OR'd in so Global-tagged pieces still serve regional Aims. |
-| rerank | `pipeline/retrieval.rerank_chunks` | ⏳ Phase 4 | `gpt-4o-mini` JSON call with full Aim in the prompt — 15× cheaper than `gpt-4o` for structured rerank. |
-| generate | `generate_digest` (Phase 1: `pipeline/report.py`) | ✅ Phase 0 | `gpt-4o-mini`, `response_format={"type":"json_object"}`, `temperature=0.3`. **LLM picks 2–5 section titles per run** — today it chose "Funding Announcements / Startup Internationalisation Efforts / Technological Developments" for the CEE Aim. |
+| ingest | `pipeline/ingestion.py::ingest_all_sources` | ✅ Phase 0–1 | 10 RSS feeds behind a `RSSConnector` in a `REGISTRY` dict — adding a Mexican-state-institutions source is one `@register("mexico_gov")` line, not a pipeline rewrite. |
+| extract | `pipeline/ingestion.py::RSSConnector.fetch` | ✅ Phase 0 | `trafilatura` on the article URL, fall back to RSS `<content:encoded>` when 403 — **saved 15/77 docs on SEC + VentureBeat this morning.** |
+| chunk | `pipeline/processing.py::chunk_articles` | ✅ Phase 0–1 | LangChain `RecursiveCharacterTextSplitter(800, overlap=100)`, title prepended so every chunk is self-identifying at rerank time. |
+| embed | `pipeline/embedding.py::embed_texts` | ✅ Phase 0–1 | `text-embedding-3-small`, batched ≤100. Swap path to VertexAI `text-embedding-004` with `task_type=RETRIEVAL_DOCUMENT` is one file. |
+| store | `pipeline/vector_store.py::upsert_chunks` | ✅ Phase 0–1 | Pinecone serverless, `dim=1536`, chunks tagged with `region` + `source_type` at ingest — **these are filter dimensions, not prompt content.** |
+| retrieve | `pipeline/retrieval.py::retrieve_relevant_chunks` | ✅ Phase 0–1 | Hybrid retrieval: `{"region": {"$in": [*aim.regions, "Global"]}}` as a Pinecone filter *before* ANN. Global always OR'd in so Global-tagged pieces still serve regional Aims. |
+| rerank | `pipeline/retrieval.py::rerank_chunks` | ⏳ Phase 4 | `gpt-4o-mini` JSON call with full Aim in the prompt — 15× cheaper than `gpt-4o` for structured rerank. |
+| generate | `pipeline/report.py::generate_digest` | ✅ Phase 0–1 | `gpt-4o-mini`, `response_format={"type":"json_object"}`, `temperature=0.3`. **LLM picks 2–5 section titles per run** — Phase 1 API run chose "Recent Fundraising Activities / Startup Internationalisation Efforts / Insights from Industry Leaders" for the CEE Aim. |
 
 ---
 

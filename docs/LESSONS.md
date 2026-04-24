@@ -70,3 +70,13 @@ Rule: before adding rerank, verify the pool has at least ~3× as many distinct o
 
 **What to do about it:** Log per-source `fetched_via={trafilatura|rss_summary}` counts, not just `used`. A source whose docs all come from `rss_summary` is fine for a skeleton but risky at scale (RSS summaries truncate; chunks carry less signal than full extractions). Keep watching the per-source fetch-method split when Phase 2 wires the real tenacity retries.
 
+## L3. `mode=cached` latency is LLM-generate-dominated, not pipeline-dominated
+
+**Phase:** 1
+
+**What surprised me:** ROADMAP targeted `cached` at `<10 s`. Measured end-to-end: **17 s** (retrieve ~3 s, generate ~14 s). The generate call is a synchronous `gpt-4o-mini` JSON completion over 20 chunks of 600-char excerpts — intrinsic LLM-latency, not pipeline waste. Shaving retrieve won't help; the dominant cost is the LLM call itself.
+
+**Context:** The demo point was never "cached is under 10 seconds" — it's "cached shows what the production architecture looks like: ingest is a scheduled Cloud Run Job on a cron, the digest endpoint is read-only against Pinecone." The interesting number is the **delta** vs `force`: **83 s → 17 s, a ~5× drop** with zero change in output quality. That ratio is the demo story; the absolute `<10 s` target was aspirational.
+
+**What to do about it:** Don't bite the prompt size to chase `<10 s` — the cost comes straight out of digest quality (fewer chunks in context = fewer sourcing options for the LLM). Reframe the demo script to lead with the 5× delta, not the absolute wall-clock. If a later phase wants to squeeze more, the lever is **prompt caching of the Aim + static system message** (saves input tokens + some TTFT) or the **`reasoning: "low"` hint** on newer models, not chunk-count reduction.
+
